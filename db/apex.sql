@@ -37,8 +37,8 @@ CREATE TABLE `medical_metrics` (
   `exam_id` int(10) UNSIGNED NOT NULL,
   `metric_type` varchar(100) NOT NULL,
   `value` decimal(10,2) NOT NULL,
-  `unit` varchar(50) DEFAULT NULL,
-  `ref_range` varchar(100) DEFAULT NULL,
+  `unit` varchar(50) NOT NULL,
+  `ref_range` varchar(100) NOT NULL,
   `is_critical` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -126,12 +126,12 @@ CREATE TABLE `training_diary` (
   `id` int(10) UNSIGNED NOT NULL,
   `athlete_id` int(10) UNSIGNED NOT NULL,
   `date` date NOT NULL,
-  `activity_type` varchar(100) DEFAULT NULL,
-  `duration` int(10) UNSIGNED DEFAULT NULL,
-  `steps` int(10) UNSIGNED DEFAULT 0,
-  `sleep_hours` decimal(4,2) DEFAULT NULL COMMENT 'Часы сна (допускает дробные)',
-  `fatigue` tinyint(3) UNSIGNED DEFAULT NULL CHECK (`fatigue` between 1 and 10),
-  `mood` tinyint(3) UNSIGNED DEFAULT NULL CHECK (`mood` between 1 and 10),
+  `activity_type` varchar(100) NOT NULL,
+  `duration` int(10) UNSIGNED NOT NULL,
+  `steps` int(10) UNSIGNED NOT NULL,
+  `sleep_hours` decimal(4,2) NOT NULL COMMENT 'Часы сна (допускает дробные)',
+  `fatigue` tinyint(3) UNSIGNED NOT NULL,
+  `mood` tinyint(3) UNSIGNED NOT NULL,
   `comment` text DEFAULT NULL,
   `is_deleted` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -166,7 +166,7 @@ CREATE TABLE `users` (
   `first_name` varchar(100) NOT NULL,
   `middle_name` varchar(100) DEFAULT NULL,
   `role` enum('спортсмен','тренер','врач') NOT NULL,
-  `specialization` varchar(150) DEFAULT NULL COMMENT 'Направление для спортсмена/тренера, специализация для врача',
+  `specialization` varchar(150) NOT NULL COMMENT 'Направление для спортсмена/тренера, специализация для врача',
   `photo_path` varchar(500) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
