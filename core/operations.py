@@ -372,11 +372,6 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
     
-from datetime import datetime, date, timedelta
-from peewee import fn, DoesNotExist, OperationalError
-from db.models import Message, User, TrainingPlan, Session
-from db.connection import db
-
 def get_training_plan(athlete_id, start_date=None, end_date=None):
     try:
         if db.is_closed():
@@ -452,7 +447,6 @@ def get_chat_partners(current_user_id):
         if db.is_closed():
             db.connect()
     
-        # 🔹 Оптимизировано: выбираем только ID, чтобы не грузить объекты User
         sent_ids = [m.receiver_id for m in Message.select(Message.receiver_id).where(Message.sender == current_user_id).distinct()]
         recv_ids = [m.sender_id for m in Message.select(Message.sender_id).where(Message.receiver == current_user_id).distinct()]
         partner_ids = list(set(sent_ids + recv_ids))
@@ -474,7 +468,7 @@ def get_chat_partner_info(partner_id):
         return True, 'Данные загружены', {
             'full_name': f"{partner.last_name} {partner.first_name} {partner.middle_name or ''}".strip(),
             'role': partner.role,
-            'specialization': partner.specialization or "",  #  Защита от None
+            'specialization': partner.specialization, 
             'photo_path': partner.photo_path
         }    
     except DoesNotExist:
