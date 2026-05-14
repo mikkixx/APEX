@@ -91,7 +91,7 @@ class MedicalMetric(BaseModel):
 class Recommendation(BaseModel):
     author = ForeignKeyField(User, backref='recommendations_given', column_name='author_id')
     athlete = ForeignKeyField(User, backref='recommendations_received', column_name='athlete_id')
-    linked_entity_type = CharField()
+    linked_entity = CharField()
     linked_entity_id = IntegerField()
     text = TextField()
 

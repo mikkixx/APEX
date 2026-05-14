@@ -1,8 +1,10 @@
 import re
 import bcrypt
 from peewee import DoesNotExist, IntegrityError, OperationalError
+from datetime import date, timedelta
 
-from db.models import User, ReadinessStatus
+
+from db.models import User, ReadinessStatus, TrainingDiary, Recommendation
 from db.connection import db
 
 def _is_valid_email(email: str) -> bool:
@@ -125,3 +127,136 @@ def get_profile(user_id):
     except OperationalError as e:
         return False, f"Ошибка подключения к БД: {e}", None
                                                    
+def edit_profile(user_id, last_name, first_name, middle_name, email, specialization, photo_path=None):
+    if not all([last_name, first_name, email, specialization]):
+        return False, 'Заполните все обязательные поля', None
+    if not _is_valid_email(email):
+        return False, 'Неверный формат email', None
+    
+    try:
+        if db.is_closed():
+            db.connect()
+        
+        user = User.get_by_id(user_id)
+
+        if User.select().where((User.email == email) & (User.id != user_id)).exists():
+            return False, 'Этот email уже занят другим пользователем', None
+        
+        with db.atomic():
+            user.last_name = last_name
+            user.first_name = first_name
+            user.middle_name = middle_name or None
+            user.email = email
+            user.specialization = specialization
+            if photo_path is not None:
+                user.photo_path = photo_path
+            user.save()
+
+        return True, 'Профиль успешно обновлен', None
+    except DoesNotExist:
+        return False, 'Пользователь не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка подключения к БД: {e}", None
+    
+def _get_current_week():
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    return monday, sunday
+
+def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if start_date is None or end_date is None:
+            start_date, end_date = _get_current_week()
+        elif (end_date - start_date).days > 180:
+            return False, 'Диапазон не должен превышать 6 месяцев', None
+        
+        query = TrainingDiary.select().where(
+            (TrainingDiary.athlete == athlete_id) &
+            (TrainingDiary.date >= start_date) &
+            (TrainingDiary.date <= end_date) &
+            (TrainingDiary.is_deleted == False)
+        ).order_by(TrainingDiary.date.desc())
+
+        total_count = query.count()
+        entries = list(query.paginate(page, per_page))
+
+        return True, 'Дневник загружен', {
+            'entries': entries,
+            'total': total_count,
+            'page': page,
+            'per_page': per_page,
+            'start_date': start_date,
+            'end_date': end_date
+        }
+    except OperationalError as e:
+        return False, f"Ошибка подключения к БД: {e}", None
+    
+def get_diary_entry_details(entry_id, athlete_id):
+    try:
+        entry = TrainingDiary.get_by_id(entry_id)
+
+        if entry.athlete_id != athlete_id or entry.is_deleted:
+            return False, 'Запись не найдена или доступ запрещен', None
+        
+        comments = Recommendation.select().where(
+            (Recommendation.linked_entity == 'дневник нагрузок') &
+            (Recommendation.linked_entity_id == entry_id)
+        ).order_by(Recommendation.id.desc())
+
+        return True, 'Данные загружены', {
+            'entry': entry,
+            'comments': list(comments)
+        }
+    except DoesNotExist:
+        return False, 'Запись не найдена или доступ запрещен', None
+    except OperationalError as e:
+        return False, f"Ошибка подключения к БД: {e}", None
+    
+def add_diary_entry(athlete_id, entry_date, activity_type, duration, steps, sleep_hours, fatigue, mood, comment=None):
+    if not all([entry_date, activity_type, duration, sleep_hours, fatigue, mood]):
+        return False, 'Заполните все обязательные поля', None
+    if not (1 <= duration <= 300):
+        return False, 'Длительность занятия должна быть от 1 до 300 мин', None
+    if steps < 0:
+        return False, 'Количество шагов не может быть отрицательным числом', None
+    if not (1 <= fatigue <= 10):
+        return False, 'Усталость: шкала от 1 до 10', None
+    if not (1 <= mood <= 10):
+        return False, 'Настроение: шкала от 1 до 10', None
+    if entry_date > date.today():
+        return False, 'Дата не может быть в будущем', None
+    
+    clean_comment = comment.strip() if comment else None
+    
+    try:
+        if db.is_closed():
+            db.connect()
+
+        existing = TrainingDiary.select().where(
+            (TrainingDiary.athlete == athlete_id) &
+            (TrainingDiary.date == entry_date) &
+            (TrainingDiary.is_deleted == False)
+        ).first()
+
+        if existing:
+            return False, f"Запись за {entry_date} уже существует. Отредактируйте ее.", {"existing_id": existing.id}
+        
+        with db.atomic():
+            TrainingDiary.create(
+                athlete = athlete_id,
+                date = entry_date,
+                activity_type = activity_type,
+                duration = duration,
+                steps = steps,
+                sleep_hours = sleep_hours,
+                fatigue = fatigue,
+                mood = mood,
+                comment = clean_comment
+            )
+        return True, 'Запись добавлена', None
+    except OperationalError as e:
+        return False, f"Ошибка подключения к БД: {e}", None
