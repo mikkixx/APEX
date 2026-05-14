@@ -4,7 +4,7 @@ from peewee import DoesNotExist, IntegrityError, OperationalError
 from datetime import date, timedelta
 
 
-from db.models import User, ReadinessStatus, TrainingDiary, Recommendation
+from db.models import User, ReadinessStatus, TrainingDiary, Recommendation, MedicalExam, MedicalMetric
 from db.connection import db
 
 def _is_valid_email(email: str) -> bool:
@@ -164,7 +164,7 @@ def _get_current_week():
     sunday = monday + timedelta(days=6)
     return monday, sunday
 
-def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3):
+def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3, activity_type=None):
     try:
         if db.is_closed():
             db.connect()
@@ -174,13 +174,17 @@ def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_pa
         elif (end_date - start_date).days > 180:
             return False, 'Диапазон не должен превышать 6 месяцев', None
         
-        query = TrainingDiary.select().where(
-            (TrainingDiary.athlete == athlete_id) &
-            (TrainingDiary.date >= start_date) &
-            (TrainingDiary.date <= end_date) &
-            (TrainingDiary.is_deleted == False)
-        ).order_by(TrainingDiary.date.desc())
+        conditions = [
+            TrainingDiary.athlete == athlete_id,
+            TrainingDiary.date >= start_date,
+            TrainingDiary.date <= end_date,
+            TrainingDiary.is_deleted == False
+        ]
 
+        if activity_type and activity_type.strip():
+            conditions.append(TrainingDiary.activity_type == activity_type.strip())
+        
+        query = TrainingDiary.select().where(*conditions).order_by(TrainingDiary.date.desc())
         total_count = query.count()
         entries = list(query.paginate(page, per_page))
 
@@ -260,3 +264,111 @@ def add_diary_entry(athlete_id, entry_date, activity_type, duration, steps, slee
         return True, 'Запись добавлена', None
     except OperationalError as e:
         return False, f"Ошибка подключения к БД: {e}", None
+    
+def edit_diary_entry(entry_id, athlete_id, entry_date, activity_type, duration, steps, sleep_hours, fatigue, mood, comment=None):
+    if not all([entry_date, activity_type, duration, sleep_hours, fatigue, mood]):
+        return False, 'Заполните все обязательные поля', None
+    if not (1 <= duration <= 300):
+        return False, 'Длительность занятия должна быть от 1 до 300 мин', None
+    if steps < 0:
+        return False, 'Количество шагов не может быть отрицательным числом', None
+    if not (1 <= fatigue <= 10):
+        return False, 'Усталость: шкала от 1 до 10', None
+    if not (1 <= mood <= 10):
+        return False, 'Настроение: шкала от 1 до 10', None
+    if entry_date > date.today():
+        return False, 'Дата не может быть в будущем', None
+    
+    clean_comment = comment.strip() if comment else None
+
+    try:
+        entry = TrainingDiary.get_by_id(entry_id)
+        if entry.athlete_id != athlete_id:
+            return False, 'Доступ запрещен', None
+        
+        critical_changed = (entry.date != entry_date) or (entry.activity_type != activity_type)
+
+        with db.atomic():
+                entry.date = entry_date
+                entry.activity_type = activity_type
+                entry.duration = duration
+                entry.steps = steps
+                entry.sleep_hours = sleep_hours
+                entry.fatigue = fatigue
+                entry.mood = mood
+                entry.comment = clean_comment
+                entry.save()
+
+                if critical_changed:
+                    Recommendation.delete().where(
+                        (Recommendation.linked_entity == 'дневник нагрузок') &
+                        (Recommendation.linked_entity_id == entry_id)
+                    ).execute()
+            
+        return True, 'Изменения сохранены', {'needs_review': critical_changed}
+    except DoesNotExist:
+        return False, 'Запись не найдена', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def delete_diary_entry(entry_id, athlete_id):
+    try:
+        entry = TrainingDiary.get_by_id(entry_id)
+        if entry.athlete_id != athlete_id:
+            return False, 'Доступ запрещен', None
+        
+        with db.atomic():
+            entry.is_deleted = True
+            entry.save()
+        return True, 'Запись удалена', None
+    except DoesNotExist:
+        return False, 'Запись не найдена', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def get_medical_data(athlete_id, exam_date=None, exam_type=None):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        conditions = [MedicalExam.athlete == athlete_id]
+
+        if exam_date:
+            if exam_date > date.today():
+                return False, 'Дата не может быть в будущем', None
+            conditions.append(MedicalExam.exam_date == exam_date.strip())
+        
+        if exam_type and exam_type.strip():
+            conditions.append(MedicalExam.exam_type == exam_type.strip())
+
+
+        exams = MedicalExam.select().where(*conditions).order_by(MedicalExam.exam_date.desc())
+
+        result = []
+        for exam in exams:
+            metrics = MedicalMetric.select().where(
+                MedicalMetric.exam == exam
+            ).order_by(MedicalMetric.id.desc())
+
+            recommendations = Recommendation.select().where(
+                (Recommendation.linked_entity == 'медкарта') &
+                (Recommendation.linked_entity_id == exam.id)
+            ).order_by(Recommendation.id.desc())
+
+            doctor = exam.doctor
+            doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
+
+            result.append({ 
+                'exam_date': exam.exam_date,
+                'exam_type': exam.exam_type,
+                'doctor_fio': doctor_fio,
+                'doctor_email': doctor.email,
+                'metrics': list(metrics),
+                'recommendations': list(recommendations),
+                'exam': exam
+            })
+
+        return True, 'Медицинские данные загружены', result
+    except OperationalError as e:
+        return False, f"Ошибка подключения: {e}", None
+    
