@@ -1,10 +1,10 @@
 import re
 import bcrypt
-from peewee import DoesNotExist, IntegrityError, OperationalError
-from datetime import date, timedelta
+from peewee import fn, DoesNotExist, IntegrityError, OperationalError
+from datetime import date, timedelta, datetime
 
 
-from db.models import User, ReadinessStatus, TrainingDiary, Recommendation, MedicalExam, MedicalMetric
+from db.models import User, ReadinessStatus, TrainingDiary, Recommendation, MedicalExam, MedicalMetric, TrainingPlan, Session, Message, SpecialistBinding
 from db.connection import db
 
 def _is_valid_email(email: str) -> bool:
@@ -372,3 +372,204 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
     
+from datetime import datetime, date, timedelta
+from peewee import fn, DoesNotExist, OperationalError
+from db.models import Message, User, TrainingPlan, Session
+from db.connection import db
+
+def get_training_plan(athlete_id, start_date=None, end_date=None):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if start_date is None or end_date is None:
+            start_date, end_date = _get_current_week()
+
+        plans = TrainingPlan.select().where(
+            (TrainingPlan.athlete == athlete_id) &
+            (TrainingPlan.start_date <= end_date) &
+            (TrainingPlan.end_date >= start_date) &
+            (TrainingPlan.is_deleted == False)
+        )
+
+        result = []
+        for plan in plans:
+            sessions = Session.select().where(
+                (Session.plan == plan) &
+                (Session.is_deleted == False) &
+                (Session.date >= start_date) &
+                (Session.date <= end_date)
+            ).order_by(Session.date.asc(), Session.time.asc())
+
+            result.append({'plan': plan, 'sessions': list(sessions)})
+        return True, 'План загружен', result
+    except OperationalError as e:
+        return False, f"Ошибка подключения: {e}", None
+    
+def sync_overdue_sessions(athlete_id):
+    try:
+        cutoff_date = date.today() - timedelta(days=1)
+        overdue_ids = [
+            s.id for s in Session.select().join(TrainingPlan).where(
+                (TrainingPlan.athlete == athlete_id) &
+                (Session.status == 'запланировано') &
+                (Session.date < cutoff_date) &
+                (Session.is_deleted == False)
+            )
+        ]
+        if overdue_ids:
+            Session.update(status='пропущено').where(Session.id << overdue_ids).execute()
+            return True
+        return False
+    except OperationalError:
+        return False
+
+def update_session_status(session_id, athlete_id, new_status):
+    valid_statuses = ['запланировано', 'выполнено', 'пропущено']
+    if new_status not in valid_statuses:
+        return False, 'Недопустимый статус', None
+    
+    try:
+        session = Session.get_by_id(session_id)
+        if session.plan.athlete_id != athlete_id:
+            return False, 'Доступ запрещен', None
+        
+        today = date.today()
+        if session.date < today - timedelta(days=1) and new_status != 'пропущено':
+            return False, 'Изменение статуса доступно только в день занятия или в течение 24 часов после', None
+        
+        with db.atomic():
+            session.status = new_status
+            session.save()
+        return True, 'Статус сохранен', None
+    except DoesNotExist:
+        return False, 'Занятие не найдено', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def get_chat_partners(current_user_id):
+    try:
+        if db.is_closed():
+            db.connect()
+    
+        # 🔹 Оптимизировано: выбираем только ID, чтобы не грузить объекты User
+        sent_ids = [m.receiver_id for m in Message.select(Message.receiver_id).where(Message.sender == current_user_id).distinct()]
+        recv_ids = [m.sender_id for m in Message.select(Message.sender_id).where(Message.receiver == current_user_id).distinct()]
+        partner_ids = list(set(sent_ids + recv_ids))
+
+        if not partner_ids:
+            return True, 'Список пуст', []
+        
+        partners = User.select().where(User.id << partner_ids).order_by(User.last_name)
+        result = [{'id': p.id, 'full_name': f"{p.last_name} {p.first_name}".strip(), 'photo_path': p.photo_path} for p in partners]
+        return True, 'Список загружен', result
+    except OperationalError as e:
+        return False, f"Ошибка подключения: {e}", None
+
+def get_chat_partner_info(partner_id):
+    try:
+        if db.is_closed():
+            db.connect()
+        partner = User.get_by_id(partner_id)
+        return True, 'Данные загружены', {
+            'full_name': f"{partner.last_name} {partner.first_name} {partner.middle_name or ''}".strip(),
+            'role': partner.role,
+            'specialization': partner.specialization or "",  #  Защита от None
+            'photo_path': partner.photo_path
+        }    
+    except DoesNotExist:
+        return False, 'Собеседник не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+
+def get_chat_messages(current_user_id, partner_id, search_query=None, start_date=None, end_date=None):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        conditions = [
+            ((Message.sender == current_user_id) & (Message.receiver == partner_id)) |
+            ((Message.sender == partner_id) & (Message.receiver == current_user_id))
+        ]
+
+        if start_date and end_date:
+            if end_date < start_date:
+                return False, 'Дата начала должна быть раньше даты окончания', None
+            if start_date > date.today() or end_date > date.today():
+                return False, 'Даты не могут быть в будущем', None
+            conditions.append(Message.sent_at >= datetime.combine(start_date, datetime.min.time()))
+            conditions.append(Message.sent_at <= datetime.combine(end_date, datetime.max.time()))
+
+        if search_query and search_query.strip():
+            clean_q = search_query.strip()
+            if len(clean_q) < 3:
+                return False, 'Поисковый запрос должен содержать минимум 3 символа', None
+            conditions.append(fn.LOWER(Message.text).contains(clean_q.lower()))
+
+        messages = (Message.select(Message, User)
+            .join(User, on=(Message.sender == User.id))
+            .where(*conditions)
+            .order_by(Message.sent_at.asc()))
+                
+        result = []
+        for msg in messages:
+            is_mine = (msg.sender.id == current_user_id)
+            result.append({
+                'id': msg.id, 'text': msg.text, 'sent_at': msg.sent_at,
+                'is_mine': is_mine, 'sender_name': 'Вы' if is_mine else f"{msg.sender.last_name} {msg.sender.first_name}"
+            })
+        return True, 'Сообщения загружены', result
+    except OperationalError as e:
+        return False, f"Ошибка подключения: {e}", None
+
+def send_message(sender_id, receiver_id, text):
+    clean_text = text.strip()
+    if not clean_text:
+        return False, 'Сообщение не может быть пустым', None
+    if len(clean_text) > 500:
+        return False, 'Сообщение не может превышать 500 символов', None
+
+    try:
+        with db.atomic():
+            Message.create(sender=sender_id, receiver=receiver_id, text=clean_text, sent_at=datetime.now()) # 🔹 Исправлено sent_at
+        return True, 'Сообщение отправлено', None
+    except OperationalError as e:
+        return False, f"Ошибка отправки: {e}", None   
+
+def add_chat_partner(current_user_id, target_email):
+    if not target_email or not target_email.strip():
+        return False, 'Введите email собеседника', None
+    clean_email = target_email.strip()
+    
+    try:
+        if db.is_closed():
+            db.connect()
+        try:
+            target_user = User.get(User.email == clean_email)
+        except DoesNotExist:
+            return False, 'Пользователь с таким email не найден', None
+
+        if target_user.id == current_user_id:
+            return False, 'Нельзя добавить самого себя в собеседники', None
+        
+        return True, 'Собеседник добавлен', {
+            'id': target_user.id, 'full_name': f"{target_user.last_name} {target_user.first_name}".strip(),
+            'photo_path': target_user.photo_path, 'role': target_user.role, 'specialization': target_user.specialization
+        }
+    except OperationalError as e:
+        return False, f"Ошибка подключения к базе: {e}", None  
+
+def delete_account(user_id):
+    try:
+        user = User.get_by_id(user_id)
+        if hasattr(User, 'is_active'):
+            user.is_active = False
+        else:
+            user.email = f"disabled_{user.id}@deleted.local"
+        user.save()
+        db.close()
+        return True, 'Аккаунт деактивирован. Сессия завершена.', None
+    except DoesNotExist:
+        return False, 'Пользователь не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None

@@ -17,6 +17,7 @@ class User(BaseModel):
     role = CharField()
     specialization = CharField()
     photo_path = CharField(null = True)
+    is_active = BooleanField(default=True)
 
     class Meta:
         table_name = 'users'
