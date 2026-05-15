@@ -567,3 +567,184 @@ def delete_account(user_id):
         return False, 'Пользователь не найден', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
+    
+
+def get_my_athletes(specialist_id, page=1, per_page=5, search_query=None, sport_type=None, status=None):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        base_query = SpecialistBinding.select().where(
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна') &
+            (SpecialistBinding.is_deleted == False)
+        )
+        athlete_ids = [binding.athlete_id for binding in base_query]
+        
+        if not athlete_ids:
+            return True, 'Список пуст', {'athletes': [], 'total': 0, 'page': page, 'per_page': per_page}
+
+        query = User.select().where(User.id << athlete_ids).order_by(User.last_name.asc())
+
+        if search_query and len(search_query.strip()) >= 3:
+            q = search_query.strip().lower()
+            query = query.where(
+                (fn.LOWER(User.last_name).contains(q)) |
+                (fn.LOWER(User.first_name).contains(q)) |
+                (fn.LOWER(User.middle_name).contains(q))
+            )
+
+        if sport_type and sport_type.strip():
+            query = query.where(fn.LOWER(User.specialization).contains(sport_type.strip().lower()))
+
+        users = list(query.paginate(page, per_page))
+        
+        if status and status.strip():
+            filtered = []
+            for u in users:
+                try:
+                    s = ReadinessStatus.select().where(ReadinessStatus.athlete == u.id).order_by(ReadinessStatus.id.desc()).get()
+                    if s.current_status == status.strip():
+                        filtered.append(u)
+                except DoesNotExist:
+                    pass
+            users = filtered
+
+        total = query.count()
+        result = []
+        for athlete in users:
+            try:
+                latest_status = ReadinessStatus.select().where(
+                    ReadinessStatus.athlete == athlete.id
+                ).order_by(ReadinessStatus.id.desc()).get()
+                current_status = latest_status.current_status
+            except DoesNotExist:
+                current_status = 'Не установлен'
+
+            result.append({
+                'id': athlete.id,
+                'last_name': athlete.last_name,
+                'first_name': athlete.first_name,
+                'middle_name': athlete.middle_name or '',
+                'specialization': athlete.specialization,
+                'current_status': current_status,
+                'email': athlete.email,
+                'photo_path': athlete.photo_path
+            })
+
+        return True, 'Список загружен', {
+            'athletes': result,
+            'total': total,
+            'page': page,
+            'per_page': per_page
+        }
+
+    except OperationalError as e:
+        return False, f"Ошибка подключения к БД: {e}", None
+    
+def add_athlete_by_email(specialist_id, athlete_email):
+    if not athlete_email or not athlete_email.strip():
+        return False, 'Введите email спортсмена', None
+
+    clean_email = athlete_email.strip()
+    if not re.match(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', clean_email):
+        return False, 'Неверный формат email', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        athlete = User.get(User.email == clean_email)
+        if athlete.role != 'спортсмен':
+            return False, 'Пользователь не является спортсменом', None
+
+        specialist = User.get_by_id(specialist_id)
+        specialist_role = specialist.role
+
+        already_bound = SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete.id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна') &
+            (SpecialistBinding.is_deleted == False)
+        ).exists()
+        if already_bound:
+            return False, 'Этот спортсмен уже закреплён за вами', None
+
+        bound_ids = [b.specialist_id for b in SpecialistBinding.select(SpecialistBinding.specialist_id).where(
+            (SpecialistBinding.athlete == athlete.id) &
+            (SpecialistBinding.status == 'активна') &
+            (SpecialistBinding.is_deleted == False)
+        )]
+
+        if bound_ids:
+            existing_roles = set(u.role for u in User.select(User.role).where(User.id << bound_ids))
+
+            if specialist_role == 'тренер' and 'тренер' in existing_roles:
+                return False, 'У спортсмена уже есть активный тренер', None
+            if specialist_role == 'врач' and 'врач' in existing_roles:
+                return False, 'У спортсмена уже есть активный врач', None
+
+        with db.atomic():
+            SpecialistBinding.create(
+                athlete=athlete.id,
+                specialist=specialist_id,
+                status='активна',
+                is_deleted=False
+            )
+
+        return True, 'Спортсмен успешно добавлен', {
+            'id': athlete.id,
+            'full_name': f"{athlete.last_name} {athlete.first_name}".strip(),
+            'email': athlete.email
+        }
+
+    except DoesNotExist:
+        return False, 'Пользователь с таким email не найден', None
+    except IntegrityError:
+        return False, 'Ошибка целостности данных', None
+    except OperationalError as e:
+        return False, f"Ошибка подключения к БД: {e}", None
+    
+def get_athlete_profile_full(specialist_id, athlete_id):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        binding = SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна') &
+            (SpecialistBinding.is_deleted == False)
+        ).exists()
+
+        if not binding:
+            return False, 'Спортсмен не закреплён за вами', None
+
+        athlete = User.get_by_id(athlete_id)
+        try:
+            last_status_rec = ReadinessStatus.select().where(
+                ReadinessStatus.athlete == athlete_id
+            ).order_by(ReadinessStatus.id.desc()).get()
+            
+            current_status = last_status_rec.current_status
+            lock_status = last_status_rec.lock_status
+        except DoesNotExist:
+            current_status = 'Не установлен'
+            lock_status = 'свободно'
+
+        return True, 'Данные загружены', {
+            'id': athlete.id,
+            'full_name': f"{athlete.last_name} {athlete.first_name} {athlete.middle_name or ''}".strip(),
+            'photo_path': athlete.photo_path,
+            'role': athlete.role,
+            'specialization': athlete.specialization,
+            'email': athlete.email,
+            'current_status': current_status,
+            'lock_status': lock_status 
+        }
+
+    except DoesNotExist:
+        return False, 'Спортсмен не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    

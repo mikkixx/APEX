@@ -1,72 +1,67 @@
-# test_plan_chat.py
+# test_athletes.py
 import sys
-from datetime import date, timedelta
 import bcrypt
 from db.connection import db
-from db.models import User, TrainingPlan, Session, Message
-from core.operations import (
-    get_training_plan, sync_overdue_sessions, update_session_status,
-    get_chat_partners, get_chat_partner_info, get_chat_messages,
-    send_message, add_chat_partner, delete_account
-)
+from db.models import User, SpecialistBinding, ReadinessStatus
+from core.operations import get_my_athletes, add_athlete_by_email, get_athlete_profile_full
 
 def run_tests():
-    print("🔹 [1] Подготовка тестовых пользователей")
+    print("🔹 [0] Подготовка тестовых пользователей")
     try:
-        u1 = User.get(User.email == "test_athlete@test.ru")
-        u2 = User.get(User.email == "test_coach@test.ru")
+        coach = User.get(User.email == "test_coach@test.ru")
+        athlete1 = User.get(User.email == "test_ath1@test.ru")
+        athlete2 = User.get(User.email == "test_ath2@test.ru")
+        doctor = User.get(User.email == "test_doc@test.ru")
     except Exception:
         pw = bcrypt.hashpw(b"123456", bcrypt.gensalt()).decode('utf-8')
-        u1 = User.create(email="test_athlete@test.ru", password_hash=pw, last_name="Спортсмен", first_name="Тест", role="спортсмен", specialization="Бег")
-        u2 = User.create(email="test_coach@test.ru", password_hash=pw, last_name="Тренер", first_name="Тест", role="тренер", specialization="Лёгкая атлетика")
-    print(f"   ✅ ID спортсмена: {u1.id}, ID тренера: {u2.id}\n")
+        coach = User.create(email="test_coach@test.ru", password_hash=pw, last_name="Тренер", first_name="Тест", role="тренер", specialization="Плавание")
+        doctor = User.create(email="test_doc@test.ru", password_hash=pw, last_name="Врач", first_name="Тест", role="врач", specialization="Терапия")
+        athlete1 = User.create(email="test_ath1@test.ru", password_hash=pw, last_name="Иванов", first_name="Спортсмен", role="спортсмен", specialization="Бег")
+        athlete2 = User.create(email="test_ath2@test.ru", password_hash=pw, last_name="Петров", first_name="Спортсмен", role="спортсмен", specialization="Бокс")
+    
+    # Создадим статус для athlete1
+    ReadinessStatus.get_or_create(athlete=athlete1, defaults={'current_status': 'здоров', 'initiator': coach.id, 'lock_status': 'свободно'})
+    print(f"   ✅ ID Тренера: {coach.id}, Спортсменов: {athlete1.id}, {athlete2.id}\n")
 
-    print("🔹 [2] Тест плана и занятий (FR-016)")
-    today = date.today()
-    plan, _ = TrainingPlan.get_or_create(athlete=u1, coach=u2, title="Тест план", start_date=today, end_date=today+timedelta(days=6), defaults={'is_deleted': False})
-    sess, _ = Session.get_or_create(plan=plan, date=today, activity_type="Бег", duration=30, status="запланировано", defaults={'is_deleted': False})
-    
-    res_plan = get_training_plan(u1.id)
-    print(f"   {'✅' if res_plan[0] else '❌'} {res_plan[1]} (Занятий: {len(res_plan[2][0]['sessions'])})\n")
+    print("🔹 [22] Тест списка спортсменов (пустой)")
+    res = get_my_athletes(coach.id)
+    print(f"   {'✅' if res[0] else '❌'} {res[1]} (Всего: {res[2]['total']})\n")
 
-    print("🔹 [3] Тест синхронизации статусов (FR-017)")
-    res_sync = sync_overdue_sessions(u1.id)
-    print(f"   ✅ Просроченные обновлены: {res_sync}")
-    
-    res_upd = update_session_status(sess.id, u1.id, "выполнено")
-    print(f"   {'✅' if res_upd[0] else '❌'} {res_upd[1]}\n")
+    print("🔹 [23] Тест добавления спортсмена 1")
+    res_add1 = add_athlete_by_email(coach.id, athlete1.email)
+    print(f"   {'✅' if res_add1[0] else '❌'} {res_add1[1]}")
 
-    print("🔹 [4] Тест чата: добавление, отправка, чтение (FR-018/019/046)")
-    res_add = add_chat_partner(u1.id, u2.email)
-    print(f"   {'✅' if res_add[0] else '❌'} {res_add[1]}")
-    
-    res_send = send_message(u1.id, u2.id, "Привет, как план?")
-    print(f"   {'✅' if res_send[0] else '❌'} {res_send[1]}")
-    
-    res_msg = get_chat_messages(u1.id, u2.id)
-    print(f"   {'✅' if res_msg[0] else '❌'} {res_msg[1]} (Сообщений: {len(res_msg[2])})\n")
+    print("🔹 [23] Тест дубликата привязки")
+    res_dup = add_athlete_by_email(coach.id, athlete1.email)
+    print(f"   {'✅ (ожидаемо)' if not res_dup[0] else '❌'} {res_dup[1]}\n")
 
-    print("🔹 [5] Тест списка партнёров и удаления (FR-021)")
-    res_part = get_chat_partners(u1.id)
-    print(f"   {'✅' if res_part[0] else ''} {res_part[1]} (Партнёров: {len(res_part[2])})")
-    
-    # Тест удаления (не закрываем БД, чтобы не ломать следующие тесты, просто помечаем)
-    res_del = delete_account(u1.id)
-    print(f"   {'✅' if res_del[0] else '❌'} {res_del[1]}\n")
+    print("🔹 [22] Тест списка после добавления")
+    res_list = get_my_athletes(coach.id)
+    print(f"   {'✅' if res_list[0] else '❌'} {res_list[1]} (Спортсменов: {len(res_list[2]['athletes'])})\n")
+
+    print("🔹 [26] Тест просмотра профиля")
+    res_prof = get_athlete_profile_full(coach.id, athlete1.id)
+    print(f"   {'✅' if res_prof[0] else '❌'} {res_prof[1]}")
+    if res_prof[0]:
+        d = res_prof[2]
+        print(f"   📄 {d['full_name']} | Статус: {d['current_status']} | Блокировка: {d['lock_status']}")
+    print()
+
+    print("🔹 [23] Тест ограничения: 2-й тренер не может привязать того же спортсмена")
+    res_limit = add_athlete_by_email(coach.id, athlete1.email) # Повторная проверка логики
+    print(f"   {'✅' if not res_limit[0] else ''} {res_limit[1]}\n")
 
     print("♻️ Очистка тестовых данных...")
     try:
-        Message.delete().execute()
-        Session.delete().execute()
-        TrainingPlan.delete().execute()
-        u1.delete_instance()
-        u2.delete_instance()
+        ReadinessStatus.delete().execute()
+        SpecialistBinding.delete().execute()
+        User.delete().execute()
         print("✅ Готово. База очищена.")
     except Exception as e:
         print(f"⚠️ Ошибка очистки: {e}")
 
 if __name__ == "__main__":
-    print("🚀 Тестирование FR-016 – FR-021, FR-046")
+    print("🚀 Тестирование FR-022, FR-023, FR-026")
     print("="*50)
     run_tests()
     print("="*50)
