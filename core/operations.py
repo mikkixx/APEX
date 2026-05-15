@@ -2,10 +2,9 @@ import re
 import bcrypt
 from peewee import fn, DoesNotExist, IntegrityError, OperationalError
 from datetime import date, timedelta, datetime
-
-
 from db.models import User, ReadinessStatus, TrainingDiary, Recommendation, MedicalExam, MedicalMetric, TrainingPlan, Session, Message, SpecialistBinding
 from db.connection import db
+import os
 
 def _is_valid_email(email: str) -> bool:
     return bool(re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email))
@@ -202,7 +201,7 @@ def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_pa
 def get_diary_entry_details(entry_id, athlete_id):
     try:
         entry = TrainingDiary.get_by_id(entry_id)
-
+        
         if entry.athlete_id != athlete_id or entry.is_deleted:
             return False, 'Запись не найдена или доступ запрещен', None
         
@@ -211,9 +210,18 @@ def get_diary_entry_details(entry_id, athlete_id):
             (Recommendation.linked_entity_id == entry_id)
         ).order_by(Recommendation.id.desc())
 
+        formatted_comments = []
+        for comment in comments:
+            author = User.get_by_id(comment.author_id)
+            formatted_comments.append({
+                'text': comment.text,
+                'author_fio': f"{author.last_name} {author.first_name} {author.middle_name or ''}".strip(),
+                'author_role': author.role
+            })
+
         return True, 'Данные загружены', {
             'entry': entry,
-            'comments': list(comments)
+            'comments': formatted_comments 
         }
     except DoesNotExist:
         return False, 'Запись не найдена или доступ запрещен', None
@@ -363,7 +371,15 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
                 'exam_type': exam.exam_type,
                 'doctor_fio': doctor_fio,
                 'doctor_email': doctor.email,
-                'metrics': list(metrics),
+                'metrics': [
+                    {
+                        'type': m.metric_type,
+                        'value': m.value,
+                        'unit': m.unit,
+                        'is_critical': m.is_critical  
+                    } 
+                    for m in metrics
+                ],
                 'recommendations': list(recommendations),
                 'exam': exam
             })
@@ -987,3 +1003,662 @@ def get_athlete_medical_data_for_coach(specialist_id, athlete_id, exam_date=None
         return True, 'Медицинские данные загружены', result
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
+    
+def update_athlete_status(specialist_id, athlete_id, new_status):
+    valid_statuses = ['здоров', 'устал', 'болен'] #
+    if new_status not in valid_statuses:
+        return False, 'Недопустимый статус', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        specialist = User.get_by_id(specialist_id)
+        specialist_role = specialist.role
+
+        try:
+            last_status = ReadinessStatus.select().where(
+                ReadinessStatus.athlete == athlete_id
+            ).order_by(ReadinessStatus.id.desc()).get()
+
+            if last_status.lock_status == 'заблокировано':
+                initiator = last_status.initiator
+                if initiator.role == 'врач' and specialist_role == 'тренер':
+                    return False, 'Статус заблокирован врачом. Действие отменено.', None
+        except DoesNotExist:
+            pass 
+
+        with db.atomic():
+
+            lock_status = 'заблокировано' if specialist_role == 'врач' else 'свободно'
+            
+            ReadinessStatus.create(
+                athlete=athlete_id,
+                initiator=specialist_id,
+                current_status=new_status,
+                lock_status=lock_status  
+            )
+            
+        return True, 'Статус обновлён', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def delete_session(specialist_id, session_id):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        session = Session.get_by_id(session_id)
+        
+        if session.plan.coach_id != specialist_id:
+            return False, 'Доступ запрещён', None
+
+        if session.date < date.today():
+            return False, 'Удаление возможно только до начала даты занятия', None
+
+        if session.status == 'выполнено':
+            return False, 'Нельзя удалить выполненное занятие', None
+
+        with db.atomic():
+            session.is_deleted = True
+            session.save()
+        return True, 'Занятие удалено', None
+    except DoesNotExist:
+        return False, 'Занятие не найдено', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def get_session_details(specialist_id, session_id):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        session = Session.get_by_id(session_id)
+        
+        if session.plan.coach_id != specialist_id:
+            return False, 'Доступ запрещён', None
+
+        return True, 'Данные загружены', {
+            'id': session.id,
+            'plan_id': session.plan.id,
+            'plan_title': session.plan.title,
+            'date': session.date,
+            'time': session.time,
+            'activity_type': session.activity_type,
+            'duration': session.duration,
+            'status': session.status
+        }
+    except DoesNotExist:
+        return False, 'Занятие не найдено', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def add_session(specialist_id, plan_id, session_date, session_time, activity_type, duration):
+    if duration <= 0:
+        return False, 'Длительность должна быть больше 0', None
+    if session_date < date.today():
+        return False, 'Дата не может быть в прошлом', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        plan = TrainingPlan.get_by_id(plan_id)
+        if plan.coach_id != specialist_id:
+            return False, 'Доступ запрещён', None
+
+        conflict = Session.select().where(
+            (Session.plan == plan_id) &
+            (Session.date == session_date) &
+            (Session.time == session_time) &
+            (Session.is_deleted == False)
+        ).exists()
+
+        if conflict:
+            return False, 'На это время уже запланировано другое занятие', None
+
+        with db.atomic():
+            Session.create(
+                plan=plan_id,
+                date=session_date,
+                time=session_time,
+                activity_type=activity_type,
+                duration=duration,
+                status='запланировано',
+                is_deleted=False
+            )
+            
+        return True, 'Занятие создано', None
+    except DoesNotExist:
+        return False, 'План не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def get_athlete_diary(specialist_id, athlete_id, start_date=None, end_date=None, page=1, per_page=10):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        if start_date is None or end_date is None:
+            today = date.today()
+            start_date = today.replace(day=1)
+            if today.month == 12:
+                end_date = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
+            else:
+                end_date = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+
+        conditions = [
+            (TrainingDiary.athlete == athlete_id),
+            (TrainingDiary.is_deleted == False)
+        ]
+
+        if start_date and end_date:
+            conditions.append((TrainingDiary.date >= start_date) & (TrainingDiary.date <= end_date))
+        
+        query = TrainingDiary.select().where(*conditions).order_by(TrainingDiary.date.desc())
+        total = query.count()
+        entries = list(query.paginate(page, per_page))
+
+        result = [{
+            'id': e.id, 'date': e.date, 'activity_type': e.activity_type,
+            'duration': e.duration, 'steps': e.steps, 'sleep_hours': e.sleep_hours,
+            'fatigue': e.fatigue, 'mood': e.mood
+        } for e in entries]
+
+        return True, 'Дневник загружен', {
+            'entries': result, 'total': total, 'page': page, 'per_page': per_page
+        }
+    except OperationalError as e:
+        return False, f"Ошибка подключения: {e}", None
+    
+def add_diary_recommendation(specialist_id, entry_id, text):
+    clean_text = text.strip()
+    if not clean_text:
+        return False, 'Текст не может быть пустым', None
+    if len(clean_text) > 500:
+        return False, 'Текст не должен превышать 500 символов', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        entry = TrainingDiary.get_by_id(entry_id)
+        
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == entry.athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        with db.atomic():
+            Recommendation.create(
+                author=specialist_id,
+                athlete=entry.athlete_id,
+                linked_entity_type='дневник нагрузок',
+                linked_entity_id=entry_id,
+                text=clean_text
+            )
+            
+        return True, 'Рекомендация сохранена', None
+    except DoesNotExist:
+        return False, 'Запись дневника не найдена', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def get_athlete_plan_for_doctor(doctor_id, athlete_id, start_date=None, end_date=None):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == doctor_id) &
+            (SpecialistBinding.status == 'активна') &
+            (SpecialistBinding.is_deleted == False)
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        conditions = [
+            (TrainingPlan.athlete == athlete_id),
+            (TrainingPlan.is_deleted == False)
+        ]
+
+        if start_date and end_date:
+            conditions.append((TrainingPlan.start_date <= end_date) & (TrainingPlan.end_date >= start_date))
+
+        plans = TrainingPlan.select().where(*conditions).order_by(TrainingPlan.start_date.desc())
+
+        result = []
+        for plan in plans:
+            sessions = Session.select().where(
+                (Session.plan == plan) &
+                (Session.is_deleted == False)
+            ).order_by(Session.date.asc(), Session.time.asc())
+
+            result.append({
+                'plan_id': plan.id,
+                'title': plan.title,
+                'start_date': plan.start_date,
+                'end_date': plan.end_date,
+                'sessions': [{
+                    'id': s.id,
+                    'date': s.date,
+                    'time': s.time,
+                    'activity_type': s.activity_type,
+                    'duration': s.duration,
+                    'status': s.status
+                } for s in sessions]
+            })
+
+        return True, 'План загружен', result
+    except OperationalError as e:
+        return False, f"Ошибка подключения: {e}", None
+    
+def get_athlete_medical_records(doctor_id, athlete_id):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == doctor_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        exams = MedicalExam.select().where(
+            MedicalExam.athlete == athlete_id
+        ).order_by(MedicalExam.exam_date.desc())
+
+        result = []
+        for exam in exams:
+            metrics = MedicalMetric.select().where(
+                MedicalMetric.exam == exam
+            ).order_by(MedicalMetric.id.desc())
+
+            recommendations = Recommendation.select().where(
+                (Recommendation.linked_entity == 'медкарта') &
+                (Recommendation.linked_entity_id == exam.id)
+            ).order_by(Recommendation.id.desc())
+
+            doctor = exam.doctor
+            doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
+
+            result.append({
+                'exam_id': exam.id,
+                'exam_date': exam.exam_date,
+                'exam_type': exam.exam_type,
+                'doctor_fio': doctor_fio,
+                'doctor_email': doctor.email,
+                'metrics': [{
+                    'id': m.id,
+                    'type': m.metric_type,
+                    'value': m.value,
+                    'unit': m.unit,
+                    'is_critical': m.is_critical
+                } for m in metrics],
+                'recommendations': [{
+                    'id': r.id,
+                    'text': r.text,
+                    'created_at': r.created_at
+                } for r in recommendations]
+            })
+
+        return True, 'Медицинские данные загружены', result
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def create_medical_exam(doctor_id, athlete_id, exam_date, exam_type):
+    if not exam_type or not exam_type.strip():
+        return False, 'Укажите тип осмотра', None
+    if exam_date > date.today():
+        return False, 'Дата не может быть в будущем', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == doctor_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        existing = MedicalExam.select().where(
+            (MedicalExam.athlete == athlete_id) &
+            (MedicalExam.exam_date == exam_date) &
+            (MedicalExam.exam_type == exam_type.strip())
+        ).exists()
+
+        if existing:
+            return False, 'Осмотр этого типа уже существует за указанную дату', None
+
+        with db.atomic():
+            exam = MedicalExam.create(
+                athlete=athlete_id,
+                doctor=doctor_id,
+                exam_date=exam_date,
+                exam_type=exam_type.strip(),
+                is_deleted=False
+            )
+
+            base_metrics = [
+                ('Пульс', 'уд/мин'),
+                ('Давление (систолическое)', 'мм рт.ст.'),
+                ('Давление (диастолическое)', 'мм рт.ст.'),
+                ('Вес', 'кг'),
+                ('Рост', 'см')
+            ]
+
+            for metric_type, unit in base_metrics:
+                MedicalMetric.create(
+                    exam=exam.id,
+                    metric_type=metric_type,
+                    value=0.0,  
+                    unit=unit,
+                    ref_range='', 
+                    is_critical=False
+                )
+
+        return True, 'Карточка осмотра создана', {'exam_id': exam.id}
+    except IntegrityError:
+        return False, 'Ошибка целостности данных', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def add_medical_metric(exam_id, doctor_id, metric_type, value, unit, ref_min=None, ref_max=None):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        exam = MedicalExam.get_by_id(exam_id)
+        
+        if exam.doctor_id != doctor_id:
+            return False, 'Доступ запрещён', None
+
+        is_critical = False
+        if value is not None and ref_min is not None and ref_max is not None:
+            try:
+                val = float(value)
+                if val < ref_min or val > ref_max:
+                    is_critical = True
+            except (ValueError, TypeError):
+                pass
+
+        with db.atomic():
+            metric, created = MedicalMetric.get_or_create(
+                exam=exam_id,
+                metric_type=metric_type,
+                defaults={
+                    'value': value,
+                    'unit': unit,
+                    'is_critical': is_critical
+                }
+            )
+
+            if not created:
+                metric.value = value
+                metric.unit = unit
+                metric.is_critical = is_critical
+                metric.save()
+
+        return True, 'Показатель сохранён', {'is_critical': is_critical}
+    except DoesNotExist:
+        return False, 'Осмотр не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def add_medical_recommendation(doctor_id, exam_id, text):
+    clean_text = text.strip()
+    if not clean_text:
+        return False, 'Текст рекомендации не может быть пустым', None
+    if len(clean_text) > 500:
+        return False, 'Текст не должен превышать 500 символов', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        exam = MedicalExam.get_by_id(exam_id)
+        
+        if exam.doctor_id != doctor_id:
+            return False, 'Доступ запрещён', None
+
+        with db.atomic():
+            Recommendation.create(
+                author=doctor_id,
+                athlete=exam.athlete_id,
+                linked_entity='медкарта',
+                linked_entity_id=exam_id,
+                text=clean_text
+            )
+
+        return True, 'Рекомендация подписана', None
+    except DoesNotExist:
+        return False, 'Осмотр не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def generate_report(specialist_id, athlete_id, report_type, start_date, end_date, format='excel'):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        os.makedirs('./reports', exist_ok=True)
+        filename = f"./reports/report_{athlete_id}_{date.today().strftime('%Y%m%d')}.{format}"
+
+        sessions_data = []
+        exams = []
+        
+        if report_type == 'training':
+            plans = TrainingPlan.select().where(
+                (TrainingPlan.athlete == athlete_id) &
+                (TrainingPlan.start_date >= start_date) &
+                (TrainingPlan.end_date <= end_date)
+            )
+            for plan in plans:
+                sessions = Session.select().where(
+                    (Session.plan == plan) & (Session.is_deleted == False)
+                )
+                for s in sessions:
+                    sessions_data.append({
+                        'date': str(s.date),
+                        'activity': s.activity_type,
+                        'duration': s.duration,
+                        'status': s.status
+                    })
+                    
+        elif report_type == 'medical':
+            exams = MedicalExam.select().where(
+                (MedicalExam.athlete == athlete_id) &
+                (MedicalExam.exam_date >= start_date) &
+                (MedicalExam.exam_date <= end_date)
+            )
+        else:
+            return False, 'Неподдерживаемый тип отчёта. Доступно: training, medical', None
+
+        if format == 'excel':
+            try:
+                from openpyxl import Workbook
+                wb = Workbook()
+                ws = wb.active
+                ws.title = 'Тренировки' if report_type == 'training' else 'Медосмотры'
+                
+                if report_type == 'training':
+                    ws.append(['Дата', 'Активность', 'Длительность (мин)', 'Статус'])
+                    for row in sessions_data:
+                        ws.append([row['date'], row['activity'], row['duration'], row['status']])
+                else:
+                    ws.append(['Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'])
+                    for exam in exams:
+                        metrics = MedicalMetric.select().where(MedicalMetric.exam == exam)
+                        for m in metrics:
+                            ws.append([
+                                str(exam.exam_date), exam.exam_type, m.metric_type,
+                                str(m.value) if m.value is not None else '', m.unit,
+                                'Да' if m.is_critical else 'Нет'
+                            ])
+                wb.save(filename)
+            except ImportError:
+                return False, 'Установите openpyxl: pip install openpyxl', None
+
+        elif format == 'pdf':
+            try:
+                from reportlab.lib.pagesizes import A4
+                from reportlab.platypus import SimpleDocTemplate, Table, Paragraph, Spacer
+                from reportlab.lib.styles import getSampleStyleSheet
+                from reportlab.lib import colors
+                from reportlab.pdfbase import pdfmetrics
+                from reportlab.pdfbase.ttfonts import TTFont
+                import os as os_sys
+
+                font_path = "C:\\Windows\\Fonts\\arial.ttf"
+                if os_sys.path.exists(font_path):
+                    pdfmetrics.registerFont(TTFont('Arial', font_path))
+                    font_name = 'Arial'
+                else:
+                    font_name = 'Helvetica'  
+
+                doc = SimpleDocTemplate(filename, pagesize=A4)
+                elements = []
+                styles = getSampleStyleSheet()
+                
+                # Заголовок
+                title_style = styles['Heading1']
+                title_style.fontName = font_name
+                title = Paragraph(f"Отчёт: {report_type.capitalize()}", title_style)
+                elements.append(title)
+                elements.append(Spacer(10, 10))
+
+                table_data = []
+                if report_type == 'training':
+                    headers = ['Дата', 'Активность', 'Длительность (мин)', 'Статус']
+                    table_data = [headers] + [[s['date'], s['activity'], str(s['duration']), s['status']] for s in sessions_data]
+                else:
+                    headers = ['Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично']
+                    table_data = [headers]
+                    for exam in exams:
+                        metrics = MedicalMetric.select().where(MedicalMetric.exam == exam)
+                        for m in metrics:
+                            table_data.append([
+                                str(exam.exam_date), exam.exam_type, m.metric_type,
+                                str(m.value) if m.value is not None else '', m.unit,
+                                'Да' if m.is_critical else 'Нет'
+                            ])
+
+                col_widths = [doc.width / len(headers)] * len(headers)
+                table = Table(table_data, colWidths=col_widths)
+                table.setStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), font_name),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('FONTNAME', (0, 1), (-1, -1), font_name),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+                ])
+                elements.append(table)
+                doc.build(elements)
+                
+            except ImportError:
+                return False, 'Установите reportlab: pip install reportlab', None
+            except Exception as pdf_err:
+                return False, f'Ошибка генерации PDF: {pdf_err}', None
+        else:
+            return False, 'Неподдерживаемый формат. Используйте excel или pdf', None
+
+        return True, f"Отчёт сохранён: {filename}", {'path': filename}
+
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    except Exception as e:
+        return False, f"Ошибка генерации: {e}", None
+    
+def remove_athlete_from_list(specialist_id, athlete_id):
+    try:
+        if db.is_closed():
+            db.connect()
+
+        binding = SpecialistBinding.get(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.is_deleted == False)
+        )
+
+        with db.atomic():
+            binding.status = 'прекращена'
+            binding.is_deleted = True
+            binding.save()
+
+        return True, 'Спортсмен исключён из списка', None
+    except DoesNotExist:
+        return False, 'Привязка не найдена', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def get_session_recommendations(session_id):
+    try:
+        recommendations = Recommendation.select().where(
+            (Recommendation.linked_entity == 'тренировочное занятие') &
+            (Recommendation.linked_entity_id == session_id)
+        ).order_by(Recommendation.id.desc())
+        
+        result = []
+        for rec in recommendations:
+            author = User.get_by_id(rec.author_id)
+            result.append({
+                'text': rec.text,
+                'author_fio': f"{author.last_name} {author.first_name}".strip(),
+                'author_role': author.role
+            })
+        
+        return True, 'Рекомендации загружены', result
+    except DoesNotExist:
+        return False, 'Занятие не найдено', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+    
+def get_recommendations_for_entry(entry_id):
+    try:
+        recs = Recommendation.select().where(
+            (Recommendation.linked_entity == 'дневник нагрузок') &
+            (Recommendation.linked_entity_id == entry_id)
+        ).order_by(Recommendation.id.desc())
+        
+        result = []
+        for rec in recs:
+            author = User.get_by_id(rec.author_id)
+            result.append({
+                'text': rec.text,
+                'author_fio': f"{author.last_name} {author.first_name}".strip(),
+                'author_role': author.role
+            })
+        return True, 'Загружены', result
+    except Exception as e:
+        return False, str(e), None
