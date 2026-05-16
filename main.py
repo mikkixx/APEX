@@ -13,12 +13,12 @@ from PySide6.QtGui import QFont, QPixmap, QFontDatabase
 sys.path.insert(0, str(Path(__file__).parent))
 
 from db.connection import db
-# from ui.login_window import LoginWindow  #  Раскомментируй, когда сделаешь окно входа
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.current_user = None
+        self.login_window = None
         self.register_window = None
         self.init_ui()
 
@@ -27,14 +27,18 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1024, 720)
         self.setStyleSheet(self._get_stylesheet())
         self._load_fonts()
-        self._show_auth_screen()
+        
+        # При запуске сразу показываем окно входа
+        self._show_login_screen()
 
     def _load_fonts(self):
         """Подгружает шрифт Alegreya из папки fonts"""
         font_path = Path(__file__).parent / "fonts" / "Alegreya-Regular.ttf"
         if font_path.exists():
             QFontDatabase.addApplicationFont(str(font_path))
-            QFontDatabase.addApplicationFont(str(font_path).replace("Regular", "Bold"))
+            bold_path = font_path.parent / "Alegreya-Bold.ttf"
+            if bold_path.exists():
+                QFontDatabase.addApplicationFont(str(bold_path))
 
     def _get_stylesheet(self):
         """Глобальные стили в точном соответствии с вайрфреймами"""
@@ -42,27 +46,27 @@ class MainWindow(QMainWindow):
         QMainWindow { background-color: #FFFFFF; }
         QWidget#main-container { background-color: #FFFFFF; }
         
-        QLabel { color: #333333; font-family: 'Alegreya', 'Times New Roman', serif; }
-        QLabel#logo { font-size: 26px; font-weight: bold; letter-spacing: 2px; color: #111111; }
-        QLabel#page-title { font-size: 30px; font-weight: bold; margin-bottom: 20px; color: #111111; }
-        QLabel#auth-subtitle { color: #666666; font-size: 16px; margin-bottom: 30px; }
+        QLabel { color: #73A15D; font-family: 'Alegreya', 'Times New Roman', serif; }
+        QLabel#logo { font-size: 26px; font-weight: bold; letter-spacing: 2px; color: #73A15D; }
+        QLabel#page-title { font-size: 30px; font-weight: bold; margin-bottom: 20px; color: #73A15D; }
+        QLabel#auth-subtitle { color: #73A15D; font-size: 16px; margin-bottom: 30px; }
 
         /* Навигация */
         QFrame#top-bar { border-bottom: 1px solid #E5E5E5; background-color: #FFFFFF; }
         QPushButton#nav-btn {
-            background: transparent; border: none; color: #444444;
+            background: transparent; border: none; color: #73A15D;
             font-family: 'Alegreya', serif; font-size: 16px; padding: 10px 18px;
             border-radius: 10px;
         }
-        QPushButton#nav-btn:hover { background-color: #F4F7F0; color: #73A15D; }
+        QPushButton#nav-btn:hover { background-color: #F4F7F0; color: #557A42; }
         QPushButton#nav-btn:checked, QPushButton#nav-btn.active {
             background-color: #73A15D; color: white; font-weight: bold;
         }
         QPushButton#logout-btn {
-            background-color: #222222; color: white; border: none;
+            background-color: #111111; color: white; border: none;
             border-radius: 20px; padding: 8px 24px; font-family: 'Alegreya', serif; font-size: 15px;
         }
-        QPushButton#logout-btn:hover { background-color: #444444; }
+        QPushButton#logout-btn:hover { background-color: #333333; }
 
         /* Кнопки авторизации */
         QPushButton#auth-btn {
@@ -78,83 +82,42 @@ class MainWindow(QMainWindow):
             background: transparent; border: none; color: #73A15D;
             font-size: 15px; font-family: 'Alegreya', serif;
         }
-        QPushButton#link-btn:hover { color: #557A42; text-decoration: underline; }
+        QPushButton#link-btn:hover { color: #557A42; }
         """
 
-    def _show_auth_screen(self):
-        """Экран приветствия / входа"""
-        if self.centralWidget():
-            self.setCentralWidget(None)
+    def _show_login_screen(self):
+        """Открывает окно входа"""
+        from ui.login_window import LoginWindow
+        if self.login_window:
+            self.login_window.close()
+            
+        self.login_window = LoginWindow(
+            show_register_callback=self._show_register_screen
+        )
+        self.login_window.show()
 
-        container = QWidget(objectName="main-container")
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        # Логотип
-        logo_path = Path(__file__).parent / "img" / "logo.png"
-        logo_label = QLabel()
-        if logo_path.exists():
-            pixmap = QPixmap(str(logo_path)).scaledToWidth(140, Qt.SmoothTransformation)
-            logo_label.setPixmap(pixmap)
-        else:
-            logo_label.setText("APEX")
-            logo_label.setObjectName("logo")
-        logo_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(logo_label)
-
-        layout.addStretch()
-
-        # Заголовок
-        title = QLabel("Добро пожаловать в APEX")
-        title.setObjectName("page-title")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-
-        sub = QLabel("Мониторинг здоровья и тренировочного процесса студентов-спортсменов")
-        sub.setObjectName("auth-subtitle")
-        sub.setAlignment(Qt.AlignCenter)
-        layout.addWidget(sub)
-
-        # Кнопки
-        btn_layout = QHBoxLayout()
-        btn_login = QPushButton("Войти")
-        btn_login.setObjectName("auth-btn")
-        btn_login.clicked.connect(self._go_to_login)
-
-        btn_register = QPushButton("Зарегистрироваться")
-        btn_register.setObjectName("auth-btn")
-        btn_register.clicked.connect(self._go_to_register)
-
-        btn_layout.addWidget(btn_login)
-        btn_layout.addWidget(btn_register)
-
-        widget = QWidget()
-        widget.setLayout(btn_layout)
-        layout.addWidget(widget)
-
-        layout.addStretch()
-        self.setCentralWidget(container)
-
-    def _go_to_login(self):
-        """🟡 Заглушка входа. Замени на вызов твоего LoginWindow"""
-        # self.login_window = LoginWindow(show_register_callback=self._go_to_register)
-        # self.login_window.show()
-        
-        # Временно симулируем успешный вход для теста UI:
-        self._handle_login_success({
-            'id': 1, 'role': 'спортсмен', 'first_name': 'Анна', 'last_name': 'Смирнова'
-        })
-
-    def _go_to_register(self):
+    def _show_register_screen(self):
         """Открывает окно регистрации"""
         from ui.register_window import RegisterWindow
-        self.register_window = RegisterWindow(show_login_callback=self._go_to_login)
+        if self.register_window:
+            self.register_window.close()
+            
+        self.register_window = RegisterWindow(
+            show_login_callback=self._show_login_screen
+        )
         self.register_window.show()
 
     def _handle_login_success(self, user_data):
         """Вызывается после успешного входа/регистрации"""
         self.current_user = user_data
+        
+        # Закрываем окна авторизации
+        if self.login_window:
+            self.login_window.close()
+        if self.register_window:
+            self.register_window.close()
+            
+        # Строим главное окно
         self._setup_dashboard()
 
     def _setup_dashboard(self):
@@ -224,7 +187,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setCurrentIndex(index)
 
     def _create_page_widget(self, title):
-        """Создаёт пустую страницу-заготовку. Здесь потом будет твой реальный UI."""
+        """Создаёт пустую страницу-заготовку"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(40, 30, 40, 40)
@@ -234,7 +197,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(label)
 
         info = QLabel("Интерфейс раздела будет подключён здесь.\nНавигация и стили уже настроены.")
-        info.setStyleSheet("color: #888888; font-size: 16px; line-height: 1.5;")
+        info.setStyleSheet("color: #73A15D; font-size: 16px; line-height: 1.5;")
         layout.addWidget(info)
         layout.addStretch()
 
@@ -243,8 +206,10 @@ class MainWindow(QMainWindow):
     def _logout(self):
         """Выход из системы"""
         self.current_user = None
-        if self.register_window:
-            self.register_window.close()
+        
+        # Закрываем главное окно
+        if self.centralWidget():
+            self.setCentralWidget(None)
             
         try:
             from core.operations import logout
@@ -252,7 +217,8 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
             
-        self._show_auth_screen()
+        # Возвращаемся на экран входа
+        self._show_login_screen()
 
     def closeEvent(self, event):
         """Корректное закрытие БД при выходе"""
@@ -269,5 +235,5 @@ if __name__ == "__main__":
     app.setFont(QFont("Alegreya", 11))  # Шрифт по умолчанию для всего приложения
     
     window = MainWindow()
-    window.show()
+    # Не показываем главное окно сразу, оно покажет само login_window
     sys.exit(app.exec())
