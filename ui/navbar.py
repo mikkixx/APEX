@@ -23,11 +23,12 @@ class NavBar(QWidget):
                 border-bottom: 1px solid #e0e0e0;
             }
         """)
+        
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 0, 24, 0)
         layout.setSpacing(0)
 
-        # Logo
+        # 🔹 1. Логотип (слева)
         logo_label = QLabel()
         logo_pix = QPixmap("img/logo.png")
         if not logo_pix.isNull():
@@ -37,7 +38,15 @@ class NavBar(QWidget):
             logo_label.setStyleSheet("font-size: 22px; font-weight: bold;")
         logo_label.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(logo_label)
-        layout.addSpacing(32)
+
+        # 🔹 2. Растяжка слева от ссылок
+        layout.addStretch(1)
+
+        # 🔹 3. Контейнер для ссылок (будет по центру)
+        tabs_widget = QWidget()
+        tabs_layout = QHBoxLayout(tabs_widget)
+        tabs_layout.setContentsMargins(0, 0, 0, 0)
+        tabs_layout.setSpacing(0)
 
         tabs = [
             ("Тренировочный план", "training", self.nav_training),
@@ -52,7 +61,6 @@ class NavBar(QWidget):
             btn.setFlat(True)
             is_active = (key == self.active_tab)
             
-            # 🔹 ИСПРАВЛЕНИЕ: убрано подчеркивание, неактивные ссылки стали светлее (#888888)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: transparent;
@@ -68,10 +76,14 @@ class NavBar(QWidget):
                 }}
             """)
             btn.clicked.connect(signal.emit)
-            layout.addWidget(btn)
+            tabs_layout.addWidget(btn)
 
-        layout.addStretch()
+        layout.addWidget(tabs_widget)
 
+        # 🔹 4. Растяжка справа от ссылок
+        layout.addStretch(1)
+
+        # 🔹 5. Кнопка выхода (справа)
         logout_btn = QPushButton("Выйти")
         logout_btn.setFixedWidth(110)
         logout_btn.clicked.connect(self.nav_logout.emit)

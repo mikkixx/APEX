@@ -100,6 +100,19 @@ def main():
             font-size: 20px;
             background: #f9f9f9;
         }
+        QMessageBox {
+            font-family: "Alegreya";
+            font-size: 18px;
+        }
+        QMessageBox QLabel {
+            font-family: "Alegreya";
+            font-size: 18px;
+        }
+        QMessageBox QPushButton {
+            font-family: "Alegreya";
+            font-size: 18px;
+            padding: 8px 16px;
+        }
     """)
 
     window = LoginWindow()

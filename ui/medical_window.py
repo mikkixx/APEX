@@ -6,8 +6,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from ui.base_window import BaseWindow
 
-PER_PAGE = 1  # one exam per page to match wireframe
-
+PER_PAGE = 1
 
 class MedicalWindow(BaseWindow):
     active_tab = "medical"
@@ -15,53 +14,58 @@ class MedicalWindow(BaseWindow):
     def __init__(self, user_data):
         super().__init__(user_data)
         self.page = 1
-        self.exam_date_filter = None
         self.exam_type_filter = None
-        self._all_exams = []
+        self.exam_date = None  # ✅ Одна дата вместо диапазона
         self._load()
 
     def _load(self):
         layout = self._content_layout
 
         title = QLabel("МЕДКАРТА")
-        title.setStyleSheet("font-size: 26px; font-weight: bold; letter-spacing: 1px;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
         layout.addSpacing(12)
 
-        # Main card
-        outer = QFrame()
-        outer.setStyleSheet("QFrame { border: 1px solid #e0e0e0; border-radius: 18px; background: #fafafa; }")
-        outer_layout = QVBoxLayout(outer)
-        outer_layout.setContentsMargins(24, 20, 24, 20)
-        outer_layout.setSpacing(12)
+        # === FILTER PANEL ===
+        filter_card = QFrame()
+        filter_card.setStyleSheet("""
+            QFrame { border: none; border-radius: 18px; background: #fafafa; }
+            QLabel, QDateEdit, QComboBox, QPushButton { font-size: 20px; }
+        """)
+        filter_layout_outer = QVBoxLayout(filter_card)
+        filter_layout_outer.setContentsMargins(20, 14, 20, 14)
 
-        # Filter row
         filter_row = QHBoxLayout()
         filter_lbl = QLabel("Фильтрация")
-        filter_lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
+        filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
 
+        # ✅ ОДИН КАЛЕНДАРЬ ВМЕСТО ДВУХ
+        filter_row.addWidget(QLabel("Дата:"))
         self.date_filter = QDateEdit(calendarPopup=True)
+        self.date_filter.setFixedSize(160, 50)
         self.date_filter.setDate(QDate.currentDate())
-        self.date_filter.setPrefix("Дата: ")
-        self.date_filter.setSpecialValueText("Любая дата")
+        self.exam_date = QDate.currentDate().toPyDate()  # Инициализация значения
+        filter_row.addWidget(self.date_filter)
+        filter_row.addSpacing(10)
 
+        # Combo Box for Exam Types
         self.type_combo = QComboBox()
-        self.type_combo.setFixedWidth(180)
-        self.type_combo.addItems(["Тип осмотра", "общий", "кардиологический", "неврологический", "ортопедический"])
+        self.type_combo.setFixedWidth(240)
+        self.type_combo.addItem("Загрузка...")
+        self.type_combo.setEnabled(False)
 
         apply_btn = QPushButton("Применить")
-        apply_btn.setFixedWidth(120)
+        apply_btn.setFixedWidth(150)
         apply_btn.clicked.connect(self._apply_filter)
 
-        filter_row.addWidget(self.date_filter)
         filter_row.addWidget(self.type_combo)
         filter_row.addWidget(apply_btn)
-        outer_layout.addLayout(filter_row)
+        filter_layout_outer.addLayout(filter_row)
 
-        # Scroll area for exam
+        # Scroll Area
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -70,40 +74,72 @@ class MedicalWindow(BaseWindow):
         self.scroll_layout.setSpacing(12)
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll_area.setWidget(self.scroll_widget)
-        outer_layout.addWidget(self.scroll_area)
+        filter_layout_outer.addWidget(self.scroll_area)
 
         # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
-        self.prev_btn.setFixedWidth(36)
-        self.prev_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 18px; }")
-        self.prev_btn.clicked.connect(self._prev)
+        self.prev_btn.setFixedWidth(24)
+        self.prev_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 18px; } ")
+        self.prev_btn.clicked.connect(self._prev_page)
         self.page_label = QLabel("1 страница из 1")
-        self.page_label.setStyleSheet("font-size: 14px;")
+        self.page_label.setStyleSheet("font-size: 20px; ")
         self.next_btn = QPushButton("→")
-        self.next_btn.setFixedWidth(36)
-        self.next_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 18px; }")
-        self.next_btn.clicked.connect(self._next)
+        self.next_btn.setFixedWidth(24)
+        self.next_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 18px; } ")
+        self.next_btn.clicked.connect(self._next_page)
         page_row.addWidget(self.prev_btn)
         page_row.addWidget(self.page_label)
         page_row.addWidget(self.next_btn)
-        outer_layout.addLayout(page_row)
+        filter_layout_outer.addLayout(page_row)
 
-        layout.addWidget(outer)
+        layout.addWidget(filter_card)
+        # === END FILTER PANEL ===
+
+        self._load_exam_types()
         self._refresh()
+
+    def _load_exam_types(self):
+        try:
+            from core.operations import get_examination_types
+            ok, msg, types = get_examination_types(self.user_data['id'])
+            
+            self.type_combo.clear()
+            self.type_combo.addItem("Все типы")
+            
+            if ok and types:
+                for t in types:
+                    self.type_combo.addItem(t)
+                self.type_combo.setEnabled(True)
+            else:
+                self.type_combo.addItem("Типы не найдены")
+                self.type_combo.setEnabled(False)
+                
+        except Exception as e:
+            import traceback
+            print("❌ Ошибка загрузки типов осмотров:")
+            traceback.print_exc()
+            
+            self.type_combo.clear()
+            self.type_combo.addItem("Ошибка загрузки")
+            self.type_combo.setEnabled(False)
 
     def _apply_filter(self):
         self.page = 1
+        # ✅ Обновляем выбранную дату
+        self.exam_date = self.date_filter.date().toPyDate()
+        
         t = self.type_combo.currentText()
-        self.exam_type_filter = t if t != "Тип осмотра" else None
-        # Date filter - you can add more logic if needed
+        self.exam_type_filter = t if t not in ("Все типы", "Типы не найдены", "Загрузка...", "Ошибка загрузки") else None
         self._refresh()
 
     def _refresh(self):
         from core.operations import get_medical_data
+        # ✅ Передаём одну дату в бэкенд
         ok, msg, exams = get_medical_data(
-            self.user_data['id'],
+            self.user_data['id'], 
+            exam_date=self.exam_date,
             exam_type=self.exam_type_filter
         )
 
@@ -118,90 +154,83 @@ class MedicalWindow(BaseWindow):
 
         self._all_exams = exams or []
         total = len(self._all_exams)
-        total_pages = max(1, total)  # one per page
 
-        if not self._all_exams:
+        if total == 0:
             empty = QLabel("Медицинских осмотров не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 14px; margin: 20px;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
             self.scroll_layout.addWidget(empty)
-        else:
-            idx = self.page - 1
-            if idx >= len(self._all_exams):
-                idx = len(self._all_exams) - 1
-                self.page = idx + 1
-            exam = self._all_exams[idx]
-            self._render_exam(exam)
+            self.page_label.setText("0 страниц")
+            return
 
-        self.page_label.setText(f"{self.page} страница из {total_pages}")
+        idx = min(self.page - 1, total - 1)
+        exam = self._all_exams[idx]
+        self._render_exam(exam)
+
+        self.page_label.setText(f"{self.page} страница из {total}")
         self.prev_btn.setEnabled(self.page > 1)
-        self.next_btn.setEnabled(self.page < total_pages)
+        self.next_btn.setEnabled(self.page < total)
 
     def _render_exam(self, exam):
         exam_card = QFrame()
-        exam_card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 14px; }")
-        card_layout = QVBoxLayout(exam_card)
-        card_layout.setContentsMargins(20, 16, 20, 16)
-        card_layout.setSpacing(6)
+        exam_card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 16px; }")
+        cl = QVBoxLayout(exam_card)
+        cl.setContentsMargins(20, 16, 20, 16)
+        cl.setSpacing(6)
 
         title_lbl = QLabel(f"Медицинский осмотр ({exam['exam_date']})")
-        title_lbl.setStyleSheet("font-size: 15px; font-weight: bold; margin-bottom: 4px;")
-        card_layout.addWidget(title_lbl)
+        title_lbl.setStyleSheet("font-size: 22px; font-weight: bold; margin-bottom: 4px;")
+        cl.addWidget(title_lbl)
 
         def row(label, value, critical=False):
             r = QHBoxLayout()
             lbl_color = "#cc0000" if critical else "#1a1a1a"
             val_color = "#cc0000" if critical else "#777"
             lbl = QLabel(f"{label}:")
-            lbl.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {lbl_color};")
+            lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {lbl_color};")
             val = QLabel(str(value))
-            val.setStyleSheet(f"font-size: 14px; color: {val_color};")
-            r.addWidget(lbl)
-            r.addSpacing(4)
-            r.addWidget(val)
-            r.addStretch()
+            val.setStyleSheet(f"font-size: 20px; color: {val_color};")
+            r.addWidget(lbl); r.addSpacing(4); r.addWidget(val); r.addStretch()
             return r
 
-        card_layout.addLayout(row("Тип осмотра", exam['exam_type']))
-        card_layout.addLayout(row("Врач", f"{exam['doctor_fio']}, {exam['doctor_email']}"))
+        cl.addLayout(row("Тип осмотра", exam['exam_type']))
+        cl.addLayout(row("Врач", f"{exam['doctor_fio']}, {exam['doctor_email']}"))
 
         metrics_title = QLabel("Показатели")
-        metrics_title.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 8px;")
+        metrics_title.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 8px;")
         metrics_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        card_layout.addWidget(metrics_title)
+        cl.addWidget(metrics_title)
 
-        for metric in exam.get('metrics', []):
-            display = f"{metric['value']} {metric['unit']}"
-            if metric.get('is_critical'):
+        for m in exam.get('metrics', []):
+            display = f"{m['value']} {m['unit']}"
+            if m.get('is_critical'):
                 display += " (критично)"
-            card_layout.addLayout(row(metric['type'], display, critical=metric.get('is_critical', False)))
+            cl.addLayout(row(m['type'], display, critical=m.get('is_critical', False)))
 
-        # Doctor recommendations
         recs = exam.get('recommendations', [])
         if recs:
             rec_title = QLabel("Рекомендации врача")
-            rec_title.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 10px;")
+            rec_title.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 10px;")
             rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            card_layout.addWidget(rec_title)
-
+            cl.addWidget(rec_title)
             for rec in recs:
                 rec_box = QTextEdit()
                 rec_box.setPlainText(rec.text if hasattr(rec, 'text') else str(rec))
                 rec_box.setReadOnly(True)
-                rec_box.setFixedHeight(72)
+                rec_box.setFixedHeight(80)
                 rec_box.setStyleSheet("""
                     QTextEdit { border: 1px solid #e0e0e0; border-radius: 10px;
-                        background: #f9f9f9; padding: 8px; font-size: 14px; color: #444; }
+                        background: #f9f9f9; padding: 8px; font-size: 20px; color: #444; }
                 """)
-                card_layout.addWidget(rec_box)
+                cl.addWidget(rec_box)
 
         self.scroll_layout.addWidget(exam_card)
 
-    def _prev(self):
+    def _prev_page(self):
         if self.page > 1:
             self.page -= 1
             self._refresh()
 
-    def _next(self):
+    def _next_page(self):
         self.page += 1
         self._refresh()

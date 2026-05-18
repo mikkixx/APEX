@@ -1662,3 +1662,64 @@ def get_recommendations_for_entry(entry_id):
         return True, 'Загружены', result
     except Exception as e:
         return False, str(e), None
+    
+def get_activity_types(athlete_id: int):
+    try:
+        from db.connection import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT activity_type 
+            FROM diary_entries 
+            WHERE athlete_id = ? AND activity_type IS NOT NULL
+            ORDER BY activity_type
+        """, (athlete_id,))
+        types = [row[0] for row in cursor.fetchall()]
+        return True, "OK", types
+    except Exception as e:
+        return False, str(e), []
+
+def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3, activity_type=None):
+    try:
+        
+        query = TrainingDiary.select().where(
+            (TrainingDiary.athlete_id == athlete_id) &
+            (TrainingDiary.is_deleted == False)
+        )
+
+        if start_date is not None:
+            query = query.where(TrainingDiary.date >= start_date)
+        if end_date is not None:
+            query = query.where(TrainingDiary.date <= end_date)
+        if activity_type is not None and activity_type.strip() != "":
+            query = query.where(TrainingDiary.activity_type == activity_type)
+
+        # Сортировка: новые записи сверху
+        query = query.order_by(TrainingDiary.date.desc())
+
+        # Пагинация
+        total = query.count()
+        offset = (page - 1) * per_page
+        entries = list(query.limit(per_page).offset(offset))
+
+        return True, "OK", {"entries": entries, "total": total}
+    except Exception as e:
+        print(f"Ошибка get_diary_entries: {e}")
+        return False, str(e), {"entries": [], "total": 0}
+    
+def get_examination_types(athlete_id):
+    try:
+        query = (
+            MedicalExam
+            .select(MedicalExam.exam_type)
+            .where(MedicalExam.athlete_id == athlete_id)
+            .distinct()
+            .order_by(MedicalExam.exam_type)
+        )
+        
+        types = [exam.exam_type for exam in query]
+        
+        return True, "OK", types
+    except Exception as e:
+        print(f"Ошибка загрузки типов осмотров: {e}")
+        return False, str(e), []

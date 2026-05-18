@@ -1,3 +1,12 @@
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Хост: 127.0.0.1
+-- Время создания: Май 18 2026 г., 13:05
+-- Версия сервера: 10.4.32-MariaDB
+-- Версия PHP: 8.2.12
+
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
 SET time_zone = "+00:00";
@@ -136,6 +145,13 @@ CREATE TABLE `training_diary` (
   `is_deleted` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Дамп данных таблицы `training_diary`
+--
+
+INSERT INTO `training_diary` (`id`, `athlete_id`, `date`, `activity_type`, `duration`, `steps`, `sleep_hours`, `fatigue`, `mood`, `comment`, `is_deleted`) VALUES
+(12, 48, '2026-05-18', 'Силовая', 179, 20000, 6.00, 7, 9, 'Афигенный день!', 0);
+
 -- --------------------------------------------------------
 
 --
@@ -167,8 +183,22 @@ CREATE TABLE `users` (
   `middle_name` varchar(100) DEFAULT NULL,
   `role` enum('спортсмен','тренер','врач') NOT NULL,
   `specialization` varchar(150) NOT NULL COMMENT 'Направление для спортсмена/тренера, специализация для врача',
-  `photo_path` varchar(500) DEFAULT NULL
+  `photo_path` varchar(500) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Дамп данных таблицы `users`
+--
+
+INSERT INTO `users` (`id`, `email`, `password_hash`, `last_name`, `first_name`, `middle_name`, `role`, `specialization`, `photo_path`, `is_active`) VALUES
+(42, 'cgvd@gmail.com', '$2b$12$lAnosIxi7T1qeFNopjtQpu2e0WWYO3gLu6AlZYgiUEfZDQcytWtLW', 'вава', 'авыавы', 'авыа', 'тренер', 'fdsfsdfds', NULL, 1),
+(43, 'dfsf@gmail.com', '$2b$12$4/7sEGRc6dOMhCV6NuHgDOLOl.IAaOn.PpszZI8tdlR42qcN/mqDS', 'fgdg', 'fgdfg', 'gfdg', 'тренер', 'fdddfg', NULL, 1),
+(44, 'dfgf@gmail.com', '$2b$12$5e6CdYtLl4KFl.5xJ/X8deJALvAVNT.26WH1LDuqdlK8IlsbExzHS', 'hgfhf', 'hfghf', 'hgfhf', 'тренер', 'hgfhfg', NULL, 1),
+(45, 'sfdds@gmail.com', '$2b$12$QwLxybTFSHnzBV4RXsu7xuUvJJR/2QjK5tRMKozNfptgwU09rWVWu', 'dfgfdg', 'fgdg', 'gfdgd', 'спортсмен', 'gfdgdfg', NULL, 1),
+(46, 'dgfdg@gmail.com', '$2b$12$3/8rAhSsEIDGB17PiLAKf.FJWij8vdRduAJSbVkH6PxKJR48LomOK', 'gfdgdf', 'fgdg', 'dgfdg', 'спортсмен', 'fgfdgd', NULL, 1),
+(47, 'fgfdgf@gmail.com', '$2b$12$G6Qhr55CDAQ4q5I4.YnvJOGqXiLqfMkldRWp9Q3KYLiuB0T3sWoNG', 'gfgd', 'gfdgfdg', 'fdgfd', 'спортсмен', 'fdsfd', NULL, 1),
+(48, 'elfimovakarolina@icloud.com', '$2b$12$/DdF2b4eqtGrjFwJXUz4/OmlvRono2CMG2RjjrfkqJgdtOf6M/2By', 'Елфимова', 'Каролина', 'Александровна', 'спортсмен', 'Лыжи', NULL, 1);
 
 --
 -- Индексы сохранённых таблиц
@@ -262,61 +292,61 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT для таблицы `medical_exams`
 --
 ALTER TABLE `medical_exams`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT для таблицы `medical_metrics`
 --
 ALTER TABLE `medical_metrics`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT для таблицы `messages`
 --
 ALTER TABLE `messages`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT для таблицы `readiness_status`
 --
 ALTER TABLE `readiness_status`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT для таблицы `recommendations`
 --
 ALTER TABLE `recommendations`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT для таблицы `sessions`
 --
 ALTER TABLE `sessions`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT для таблицы `specialist_bindings`
 --
 ALTER TABLE `specialist_bindings`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT для таблицы `training_diary`
 --
 ALTER TABLE `training_diary`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT для таблицы `training_plans`
 --
 ALTER TABLE `training_plans`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT для таблицы `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=49;
 
 --
 -- Ограничения внешнего ключа сохраненных таблиц
