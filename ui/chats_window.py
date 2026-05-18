@@ -21,7 +21,7 @@ class ChatsWindow(BaseWindow):
         layout = self._content_layout
 
         title = QLabel("ЧАТЫ")
-        title.setStyleSheet("font-size: 26px; font-weight: bold; letter-spacing: 1px;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
         layout.addSpacing(12)
@@ -46,7 +46,7 @@ class ChatsWindow(BaseWindow):
 
         self.partner_list = QListWidget()
         self.partner_list.setStyleSheet("""
-            QListWidget { border: none; background: transparent; font-size: 14px; }
+            QListWidget { border: none; background: transparent; font-size: 20px; }
             QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #e8e8e8; }
             QListWidget::item:selected { background: #e0e0e0; }
             QListWidget::item:hover { background: #eaeaea; }
@@ -58,7 +58,7 @@ class ChatsWindow(BaseWindow):
         add_partner_btn.setStyleSheet("""
             QPushButton { background: #1a1a1a; color: white; border-radius: 0px;
                 border-bottom-left-radius: 20px; padding: 14px;
-                font-size: 13px; border: none; }
+                font-size: 18px; border: none; }
             QPushButton:hover { background: #333; }
         """)
         add_partner_btn.clicked.connect(self._add_partner)
@@ -77,35 +77,41 @@ class ChatsWindow(BaseWindow):
         partner_info_row = QHBoxLayout()
         self.partner_avatar = QLabel()
         self.partner_avatar.setFixedSize(44, 44)
-        self.partner_avatar.setStyleSheet("border-radius: 22px; background: #ccc;")
+        self.partner_avatar.setStyleSheet("border-radius: 20px; background: #ccc;")
         self.partner_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.partner_name_lbl = QLabel("Выберите собеседника")
-        self.partner_name_lbl.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.partner_name_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         partner_info_row.addWidget(self.partner_avatar)
         partner_info_row.addSpacing(8)
         partner_info_row.addWidget(self.partner_name_lbl)
         partner_info_row.addStretch()
         right_layout.addLayout(partner_info_row)
 
-        # Search & filter
+        # ✅ Search & filter (ИСПРАВЛЕНИЕ: убран setPrefix, добавлены QLabel)
         search_row = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск")
         self.search_input.setFixedHeight(40)
+        
         self.date_filter = QDateEdit(calendarPopup=True)
         self.date_filter.setDate(QDate.currentDate().addDays(-30))
-        self.date_filter.setPrefix("С: ")
         self.date_filter.setFixedHeight(40)
+        
         self.date_end = QDateEdit(calendarPopup=True)
         self.date_end.setDate(QDate.currentDate())
-        self.date_end.setPrefix("По: ")
         self.date_end.setFixedHeight(40)
+        
         apply_search_btn = QPushButton("Применить")
-        apply_search_btn.setFixedWidth(110)
-        apply_search_btn.setFixedHeight(40)
+        apply_search_btn.setFixedWidth(157)
+        apply_search_btn.setFixedHeight(55)
         apply_search_btn.clicked.connect(self._reload_messages)
+        
+        # Порядок: Поиск -> С: [календарь] -> По: [календарь] -> Применить
         search_row.addWidget(self.search_input)
+        search_row.addWidget(QLabel("С:"))
         search_row.addWidget(self.date_filter)
+        search_row.addSpacing(8)
+        search_row.addWidget(QLabel("По:"))
         search_row.addWidget(self.date_end)
         search_row.addWidget(apply_search_btn)
         right_layout.addLayout(search_row)
@@ -125,10 +131,10 @@ class ChatsWindow(BaseWindow):
         send_row = QHBoxLayout()
         self.msg_input = QTextEdit()
         self.msg_input.setPlaceholderText("Новое сообщение")
-        self.msg_input.setFixedHeight(64)
+        self.msg_input.setFixedHeight(100)
         send_btn = QPushButton("Отправить")
-        send_btn.setFixedWidth(120)
-        send_btn.setFixedHeight(64)
+        send_btn.setFixedWidth(157)
+        send_btn.setFixedHeight(55)
         send_btn.clicked.connect(self._send_message)
         send_row.addWidget(self.msg_input)
         send_row.addWidget(send_btn)
@@ -193,7 +199,7 @@ class ChatsWindow(BaseWindow):
         bubble.setStyleSheet(f"""
             QFrame {{
                 background: {'#1a1a1a' if is_mine else '#f0f0f0'};
-                border-radius: 12px;
+                border-radius: 20px;
                 padding: 4px;
             }}
         """)
@@ -203,17 +209,17 @@ class ChatsWindow(BaseWindow):
 
         if not is_mine:
             sender_lbl = QLabel(message.get('sender_name', ''))
-            sender_lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #555;")
+            sender_lbl.setStyleSheet("font-size: 20px; font-weight: bold; color: #555;")
             bubble_layout.addWidget(sender_lbl)
 
         text_lbl = QLabel(message['text'])
         text_lbl.setWordWrap(True)
-        text_lbl.setStyleSheet(f"color: {'white' if is_mine else '#1a1a1a'}; font-size: 14px;")
+        text_lbl.setStyleSheet(f"color: {'white' if is_mine else '#1a1a1a'}; font-size: 20px; border-raduis: 20px")
         text_lbl.setMaximumWidth(500)
         bubble_layout.addWidget(text_lbl)
 
         time_lbl = QLabel(str(message['sent_at'])[:16])
-        time_lbl.setStyleSheet(f"font-size: 10px; color: {'#aaa' if is_mine else '#888'};")
+        time_lbl.setStyleSheet(f"font-size: 14px; color: {'#aaa' if is_mine else '#888'};")
         bubble_layout.addWidget(time_lbl)
 
         if is_mine:

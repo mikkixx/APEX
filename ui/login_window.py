@@ -99,9 +99,22 @@ class LoginWindow(QWidget):
         else:
             QMessageBox.warning(self, "Ошибка входа", msg)
 
+    # ✅ ИСПРАВЛЕНО: Маршрутизация по роли
     def _open_main(self, user_data):
-        from ui.training_plan_window import TrainingPlanWindow
-        self.main_win = TrainingPlanWindow(user_data)
+        role = user_data.get('role', '')
+        
+        if role == 'спортсмен':
+            from ui.training_plan_window import TrainingPlanWindow
+            self.main_win = TrainingPlanWindow(user_data)
+        elif role in ('тренер', 'врач'):
+            # Открываем главное окно специалиста (обычно "Мои спортсмены")
+            from ui.my_athletes_window import MyAthletesWindow
+            self.main_win = MyAthletesWindow(user_data)
+        else:
+            # Фоллбэк на спортсмена, если роль неизвестна
+            from ui.training_plan_window import TrainingPlanWindow
+            self.main_win = TrainingPlanWindow(user_data)
+
         self.main_win.show()
         self.close()
 

@@ -585,48 +585,60 @@ def delete_account(user_id):
         return False, f"Ошибка БД: {e}", None
     
 
-def get_my_athletes(specialist_id, page=1, per_page=5, search_query=None, sport_type=None, status=None):
+def get_my_athletes(specialist_id, page=1, per_page=5, search=None, sport_type=None, status=None):
     try:
         if db.is_closed():
             db.connect()
 
-        base_query = SpecialistBinding.select().where(
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна') &
-            (SpecialistBinding.is_deleted == False)
+        # 1. Получаем ID спортсменов, привязанных к специалисту
+        binding_ids = list(
+            SpecialistBinding.select(SpecialistBinding.athlete)
+            .where(
+                (SpecialistBinding.specialist == specialist_id) &
+                (SpecialistBinding.status == 'активна') &
+                (SpecialistBinding.is_deleted == False)
+            ).tuples()
         )
-        athlete_ids = [binding.athlete_id for binding in base_query]
-        
+        athlete_ids = [row[0] for row in binding_ids]
+
         if not athlete_ids:
             return True, 'Список пуст', {'athletes': [], 'total': 0, 'page': page, 'per_page': per_page}
 
-        query = User.select().where(User.id << athlete_ids).order_by(User.last_name.asc())
+        # 2. Базовый запрос к таблице пользователей
+        query = User.select().where(User.id << athlete_ids)
 
-        if search_query and len(search_query.strip()) >= 3:
-            q = search_query.strip().lower()
+        # 3. Фильтр поиска (по ФИО)
+        if search and len(search.strip()) >= 3:
+            q = search.strip().lower()
             query = query.where(
                 (fn.LOWER(User.last_name).contains(q)) |
                 (fn.LOWER(User.first_name).contains(q)) |
                 (fn.LOWER(User.middle_name).contains(q))
             )
 
+        # 4. Фильтр по виду спорта
         if sport_type and sport_type.strip():
             query = query.where(fn.LOWER(User.specialization).contains(sport_type.strip().lower()))
 
-        users = list(query.paginate(page, per_page))
-        
+        # 5. Фильтр по статусу готовности (применяем ДО пагинации!)
         if status and status.strip():
-            filtered = []
-            for u in users:
+            status_val = status.strip()
+            valid_ids = []
+            for aid in athlete_ids:
                 try:
-                    s = ReadinessStatus.select().where(ReadinessStatus.athlete == u.id).order_by(ReadinessStatus.id.desc()).get()
-                    if s.current_status == status.strip():
-                        filtered.append(u)
+                    s = ReadinessStatus.select().where(ReadinessStatus.athlete == aid).order_by(ReadinessStatus.id.desc()).get()
+                    if s.current_status == status_val:
+                        valid_ids.append(aid)
                 except DoesNotExist:
                     pass
-            users = filtered
+            query = query.where(User.id << valid_ids)
 
+        # 6. Считаем общее количество ПОСЛЕ всех фильтров, но ДО пагинации
         total = query.count()
+
+        # 7. Сортировка и пагинация
+        users = list(query.order_by(User.last_name.asc()).paginate(page, per_page))
+
         result = []
         for athlete in users:
             try:
@@ -657,6 +669,8 @@ def get_my_athletes(specialist_id, page=1, per_page=5, search_query=None, sport_
 
     except OperationalError as e:
         return False, f"Ошибка подключения к БД: {e}", None
+    except Exception as e:
+        return False, f"Неожиданная ошибка: {e}", None
     
 def add_athlete_by_email(specialist_id, athlete_email):
     if not athlete_email or not athlete_email.strip():

@@ -1,15 +1,21 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
-from ui.navbar import NavBar
-
+from PyQt6.QtCore import Qt
 
 class BaseWindow(QMainWindow):
-    """Base class for all authenticated screens. Subclasses set self.active_tab."""
     active_tab = ""
+    # ✅ Вкладки по умолчанию (Спортсмен)
+    NAV_TABS = [
+        ("Тренировочный план", "training"),
+        ("Дневник нагрузок",   "diary"),
+        ("Медкарта",           "medical"),
+        ("Профиль",            "profile"),
+        ("Чаты",               "chats"),
+    ]
 
     def __init__(self, user_data):
         super().__init__()
         self.user_data = user_data
-        self.setMinimumSize(1100, 700)
+        self.setMinimumSize(1200, 750)
         self.setWindowTitle("APEX")
 
         central = QWidget()
@@ -18,47 +24,66 @@ class BaseWindow(QMainWindow):
         self._main_layout.setContentsMargins(0, 0, 0, 0)
         self._main_layout.setSpacing(0)
 
-        self.navbar = NavBar(active_tab=self.active_tab)
-        self.navbar.nav_training.connect(lambda: self._navigate("training"))
-        self.navbar.nav_diary.connect(lambda: self._navigate("diary"))
-        self.navbar.nav_medical.connect(lambda: self._navigate("medical"))
-        self.navbar.nav_profile.connect(lambda: self._navigate("profile"))
-        self.navbar.nav_chats.connect(lambda: self._navigate("chats"))
-        self.navbar.nav_logout.connect(self._logout)
-        self._main_layout.addWidget(self.navbar)
+        self._build_navbar()
 
         self.content = QWidget()
         self._content_layout = QVBoxLayout(self.content)
         self._content_layout.setContentsMargins(40, 32, 40, 32)
         self._main_layout.addWidget(self.content)
 
-    def _navigate(self, tab):
-        if tab == self.active_tab:
+    def _build_navbar(self):
+        from ui.navbar import NavBar
+        # ✅ Передаем список вкладок и активный ключ
+        self.navbar = NavBar(tabs=self.NAV_TABS, active_tab=self.active_tab)
+        self.navbar.nav_requested.connect(self._navigate)
+        self.navbar.nav_logout.connect(self._logout)
+        self._main_layout.addWidget(self.navbar)
+
+    def _navigate(self, tab_key):
+        if tab_key == self.active_tab:
             return
-        if tab == "training":
+            
+        # ✅ Единый роутер для всех ролей
+        if tab_key == "training":
             from ui.training_plan_window import TrainingPlanWindow
             w = TrainingPlanWindow(self.user_data)
-        elif tab == "diary":
+        elif tab_key == "diary":
             from ui.diary_window import DiaryWindow
             w = DiaryWindow(self.user_data)
-        elif tab == "medical":
+        elif tab_key == "medical":
             from ui.medical_window import MedicalWindow
             w = MedicalWindow(self.user_data)
-        elif tab == "profile":
+        elif tab_key == "athletes":
+            from ui.my_athletes_window import MyAthletesWindow
+            w = MyAthletesWindow(self.user_data)
+        elif tab_key == "reports":
+            from ui.reports_window import ReportsWindow
+            w = ReportsWindow(self.user_data)
+        elif tab_key == "profile":
             from ui.profile_window import ProfileWindow
             w = ProfileWindow(self.user_data)
-        elif tab == "chats":
+        elif tab_key == "chats":
             from ui.chats_window import ChatsWindow
             w = ChatsWindow(self.user_data)
         else:
             return
+            
         w.show()
         self.close()
 
     def _logout(self):
-        from core.operations import logout
-        logout()
         from ui.login_window import LoginWindow
         self._login = LoginWindow()
         self._login.show()
         self.close()
+
+
+class SpecialistBaseWindow(BaseWindow):
+    """Базовое окно для тренера/врача. Наследует всю логику, переопределяет только вкладки."""
+    # ✅ Переопределяем список вкладок для специалистов
+    NAV_TABS = [
+        ("Мои спортсмены", "athletes"),
+        ("Отчеты",         "reports"),
+        ("Профиль",        "profile"),
+        ("Чаты",           "chats"),
+    ]
