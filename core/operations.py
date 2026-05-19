@@ -5,6 +5,7 @@ from datetime import date, timedelta, datetime
 from db.models import User, ReadinessStatus, TrainingDiary, Recommendation, MedicalExam, MedicalMetric, TrainingPlan, Session, Message, SpecialistBinding
 from db.connection import db
 import os
+import unicodedata
 
 def _is_valid_email(email: str) -> bool:
     return bool(re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email))
@@ -114,17 +115,18 @@ def get_profile(user_id):
 
         if user.role == 'спортсмен':
             try:
-                latest = ReadinessStatus.select().where(ReadinessStatus.athlete == user_id).order_by(ReadinessStatus.id.desc()).get()
+                latest = ReadinessStatus.select().where(ReadinessStatus.athlete_id == user_id).order_by(ReadinessStatus.id.desc()).get()
                 profile_data['current_status'] = latest.current_status
             except DoesNotExist:
                 profile_data['current_status'] = 'Не установлен'
 
         return True, 'Данные профиля загружены', profile_data
-    
     except DoesNotExist:
         return False, 'Профиль не найден', None
     except OperationalError as e:
         return False, f"Ошибка подключения к БД: {e}", None
+    except Exception as e:
+        return False, f"Ошибка в get_profile: {e}", None
                                                    
 def edit_profile(user_id, last_name, first_name, middle_name, email, specialization, photo_path=None):
     if not all([last_name, first_name, email, specialization]):
@@ -162,41 +164,6 @@ def _get_current_week():
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
     return monday, sunday
-
-def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3, activity_type=None):
-    try:
-        if db.is_closed():
-            db.connect()
-
-        if start_date is None or end_date is None:
-            start_date, end_date = _get_current_week()
-        elif (end_date - start_date).days > 180:
-            return False, 'Диапазон не должен превышать 6 месяцев', None
-        
-        conditions = [
-            TrainingDiary.athlete == athlete_id,
-            TrainingDiary.date >= start_date,
-            TrainingDiary.date <= end_date,
-            TrainingDiary.is_deleted == False
-        ]
-
-        if activity_type and activity_type.strip():
-            conditions.append(TrainingDiary.activity_type == activity_type.strip())
-        
-        query = TrainingDiary.select().where(*conditions).order_by(TrainingDiary.date.desc())
-        total_count = query.count()
-        entries = list(query.paginate(page, per_page))
-
-        return True, 'Дневник загружен', {
-            'entries': entries,
-            'total': total_count,
-            'page': page,
-            'per_page': per_page,
-            'start_date': start_date,
-            'end_date': end_date
-        }
-    except OperationalError as e:
-        return False, f"Ошибка подключения к БД: {e}", None
     
 def get_diary_entry_details(entry_id, athlete_id):
     try:
@@ -339,7 +306,7 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
         if db.is_closed():
             db.connect()
 
-        conditions = [MedicalExam.athlete == athlete_id]
+        conditions = [MedicalExam.athlete_id == athlete_id]
 
         if exam_date:
             if exam_date > date.today():
@@ -349,35 +316,30 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
         if exam_type and exam_type.strip():
             conditions.append(MedicalExam.exam_type == exam_type.strip())
 
-
         exams = MedicalExam.select().where(*conditions).order_by(MedicalExam.exam_date.desc())
-
         result = []
-        for exam in exams:
-            metrics = MedicalMetric.select().where(
-                MedicalMetric.exam == exam
-            ).order_by(MedicalMetric.id.desc())
 
+        for exam in exams:
+            metrics = MedicalMetric.select().where(MedicalMetric.exam_id == exam.id).order_by(MedicalMetric.id.desc())
             recommendations = Recommendation.select().where(
-                (Recommendation.linked_entity == 'медкарта') &
-                (Recommendation.linked_entity_id == exam.id)
+                (Recommendation.linked_entity == 'медкарта') & (Recommendation.linked_entity_id == exam.id)
             ).order_by(Recommendation.id.desc())
 
-            doctor = exam.doctor
-            doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
+            try:
+                doctor = exam.doctor
+                doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
+                doctor_email = doctor.email
+            except DoesNotExist:
+                doctor_fio = "Врач удалён"
+                doctor_email = "—"
 
             result.append({ 
                 'exam_date': exam.exam_date,
                 'exam_type': exam.exam_type,
                 'doctor_fio': doctor_fio,
-                'doctor_email': doctor.email,
+                'doctor_email': doctor_email,
                 'metrics': [
-                    {
-                        'type': m.metric_type,
-                        'value': m.value,
-                        'unit': m.unit,
-                        'is_critical': m.is_critical  
-                    } 
+                    {'type': m.metric_type, 'value': m.value, 'unit': m.unit, 'is_critical': m.is_critical} 
                     for m in metrics
                 ],
                 'recommendations': list(recommendations),
@@ -387,6 +349,8 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
         return True, 'Медицинские данные загружены', result
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
+    except Exception as e:
+        return False, f"Неожиданная ошибка в get_medical_data: {e}", None
     
 def get_training_plan(athlete_id, start_date=None, end_date=None):
     try:
@@ -463,18 +427,24 @@ def get_chat_partners(current_user_id):
         if db.is_closed():
             db.connect()
     
-        sent_ids = [m.receiver_id for m in Message.select(Message.receiver_id).where(Message.sender == current_user_id).distinct()]
-        recv_ids = [m.sender_id for m in Message.select(Message.sender_id).where(Message.receiver == current_user_id).distinct()]
+        # ✅ Используем _id поля для надёжности
+        sent_ids = [m.receiver_id for m in Message.select(Message.receiver_id).where(Message.sender_id == current_user_id).distinct()]
+        recv_ids = [m.sender_id for m in Message.select(Message.sender_id).where(Message.receiver_id == current_user_id).distinct()]
         partner_ids = list(set(sent_ids + recv_ids))
 
         if not partner_ids:
             return True, 'Список пуст', []
         
         partners = User.select().where(User.id << partner_ids).order_by(User.last_name)
-        result = [{'id': p.id, 'full_name': f"{p.last_name} {p.first_name}".strip(), 'photo_path': p.photo_path} for p in partners]
+        result = [
+            {'id': p.id, 'full_name': f"{p.last_name} {p.first_name} {p.middle_name or ''}".strip(), 'photo_path': p.photo_path} 
+            for p in partners
+        ]
         return True, 'Список загружен', result
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
+    except Exception as e:
+        return False, f"Ошибка загрузки собеседников: {e}", None
 
 def get_chat_partner_info(partner_id):
     try:
@@ -1019,9 +989,14 @@ def get_athlete_medical_data_for_coach(specialist_id, athlete_id, exam_date=None
         return False, f"Ошибка подключения: {e}", None
     
 def update_athlete_status(specialist_id, athlete_id, new_status):
-    valid_statuses = ['здоров', 'устал', 'болен'] #
-    if new_status not in valid_statuses:
-        return False, 'Недопустимый статус', None
+    # 🔪 Нормализация + удаление ВСЕХ пробелов + приведение к нижнему регистру
+    clean_status = unicodedata.normalize('NFKC', new_status.strip().lower())
+    
+    valid_statuses = ['здоров', 'устал', 'болен']
+    
+    if clean_status not in valid_statuses:
+        # Возвращаем точное значение для мгновенной отладки
+        return False, f'Недопустимый статус: "{clean_status}"', None
 
     try:
         if db.is_closed():
@@ -1050,13 +1025,12 @@ def update_athlete_status(specialist_id, athlete_id, new_status):
             pass 
 
         with db.atomic():
-
             lock_status = 'заблокировано' if specialist_role == 'врач' else 'свободно'
             
             ReadinessStatus.create(
                 athlete=athlete_id,
                 initiator=specialist_id,
-                current_status=new_status,
+                current_status=clean_status,  # ✅ Сохраняем уже очищенное значение
                 lock_status=lock_status  
             )
             
@@ -1676,22 +1650,6 @@ def get_recommendations_for_entry(entry_id):
         return True, 'Загружены', result
     except Exception as e:
         return False, str(e), None
-    
-def get_activity_types(athlete_id: int):
-    try:
-        from db.connection import get_connection
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT DISTINCT activity_type 
-            FROM diary_entries 
-            WHERE athlete_id = ? AND activity_type IS NOT NULL
-            ORDER BY activity_type
-        """, (athlete_id,))
-        types = [row[0] for row in cursor.fetchall()]
-        return True, "OK", types
-    except Exception as e:
-        return False, str(e), []
 
 def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3, activity_type=None):
     try:
@@ -1720,20 +1678,3 @@ def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_pa
     except Exception as e:
         print(f"Ошибка get_diary_entries: {e}")
         return False, str(e), {"entries": [], "total": 0}
-    
-def get_examination_types(athlete_id):
-    try:
-        query = (
-            MedicalExam
-            .select(MedicalExam.exam_type)
-            .where(MedicalExam.athlete_id == athlete_id)
-            .distinct()
-            .order_by(MedicalExam.exam_type)
-        )
-        
-        types = [exam.exam_type for exam in query]
-        
-        return True, "OK", types
-    except Exception as e:
-        print(f"Ошибка загрузки типов осмотров: {e}")
-        return False, str(e), []

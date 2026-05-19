@@ -15,7 +15,7 @@ class MedicalWindow(BaseWindow):
         super().__init__(user_data)
         self.page = 1
         self.exam_type_filter = None
-        self.exam_date = None  # ✅ Одна дата вместо диапазона
+        self.exam_date = None
         self._load()
 
     def _load(self):
@@ -42,19 +42,18 @@ class MedicalWindow(BaseWindow):
         filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
 
-        # ✅ ОДИН КАЛЕНДАРЬ ВМЕСТО ДВУХ
         filter_row.addWidget(QLabel("Дата:"))
         self.date_filter = QDateEdit(calendarPopup=True)
         self.date_filter.setFixedSize(160, 50)
         self.date_filter.setDate(QDate.currentDate())
-        self.exam_date = QDate.currentDate().toPyDate()  # Инициализация значения
+        self.exam_date = QDate.currentDate().toPyDate()
         filter_row.addWidget(self.date_filter)
         filter_row.addSpacing(10)
 
         # Combo Box for Exam Types
         self.type_combo = QComboBox()
         self.type_combo.setFixedWidth(240)
-        self.type_combo.addItem("Загрузка...")
+        self.type_combo.addItem("Все типы")
         self.type_combo.setEnabled(False)
 
         apply_btn = QPushButton("Применить")
@@ -95,39 +94,29 @@ class MedicalWindow(BaseWindow):
         filter_layout_outer.addLayout(page_row)
 
         layout.addWidget(filter_card)
-        # === END FILTER PANEL ===
 
-        self._load_exam_types()
+        # ✅ Сначала грузим данные, потом заполняем фильтры
         self._refresh()
 
-    def _load_exam_types(self):
-        try:
-            from core.operations import get_examination_types
-            ok, msg, types = get_examination_types(self.user_data['id'])
-            
-            self.type_combo.clear()
-            self.type_combo.addItem("Все типы")
-            
-            if ok and types:
-                for t in types:
-                    self.type_combo.addItem(t)
-                self.type_combo.setEnabled(True)
-            else:
-                self.type_combo.addItem("Типы не найдены")
-                self.type_combo.setEnabled(False)
-                
-        except Exception as e:
-            import traceback
-            print("❌ Ошибка загрузки типов осмотров:")
-            traceback.print_exc()
-            
-            self.type_combo.clear()
-            self.type_combo.addItem("Ошибка загрузки")
+    def _load_exam_types_from_exams(self, exams):
+        """Заполняет комбобокс типами осмотров из уже загруженных данных"""
+        self.type_combo.clear()
+        self.type_combo.addItem("Все типы")
+        
+        if exams:
+            unique_types = sorted(set(
+                e.get('exam_type', '').strip() for e in exams 
+                if e.get('exam_type') and e['exam_type'].strip()
+            ))
+            for t in unique_types:
+                self.type_combo.addItem(t)
+            self.type_combo.setEnabled(True)
+        else:
+            self.type_combo.addItem("Типы не найдены")
             self.type_combo.setEnabled(False)
 
     def _apply_filter(self):
         self.page = 1
-        # ✅ Обновляем выбранную дату
         self.exam_date = self.date_filter.date().toPyDate()
         
         t = self.type_combo.currentText()
@@ -136,7 +125,7 @@ class MedicalWindow(BaseWindow):
 
     def _refresh(self):
         from core.operations import get_medical_data
-        # ✅ Передаём одну дату в бэкенд
+        
         ok, msg, exams = get_medical_data(
             self.user_data['id'], 
             exam_date=self.exam_date,
@@ -161,7 +150,13 @@ class MedicalWindow(BaseWindow):
             empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
             self.scroll_layout.addWidget(empty)
             self.page_label.setText("0 страниц")
+            # ✅ Очищаем фильтры если нет данных
+            self.type_combo.clear()
+            self.type_combo.addItem("Все типы")
             return
+
+        # ✅ Заполняем фильтры из реальных данных (без отдельного запроса)
+        self._load_exam_types_from_exams(self._all_exams)
 
         idx = min(self.page - 1, total - 1)
         exam = self._all_exams[idx]

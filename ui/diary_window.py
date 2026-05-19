@@ -13,7 +13,6 @@ class DiaryEntryCard(QFrame):
     def __init__(self, entry, on_detail):
         super().__init__()
         self.entry = entry
-        # ✅ Задаём имя объекта для точного применения стилей
         self.setObjectName("DiaryEntryCard")
         self._build(on_detail)
 
@@ -65,6 +64,7 @@ class DiaryEntryCard(QFrame):
 
 class DiaryWindow(BaseWindow):
     active_tab = "diary"
+    
     def __init__(self, user_data):
         super().__init__(user_data)
         self.page = 1
@@ -123,7 +123,7 @@ class DiaryWindow(BaseWindow):
 
         self.activity_combo = QComboBox()
         self.activity_combo.setFixedWidth(240)
-        self.activity_combo.addItem("Загрузка...")
+        self.activity_combo.addItem("Все типы")
         self.activity_combo.setEnabled(False)
 
         apply_btn = QPushButton("Применить")
@@ -152,13 +152,13 @@ class DiaryWindow(BaseWindow):
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
         self.prev_btn.setFixedWidth(24)
-        self.prev_btn.setStyleSheet("QPushButton { background: none; color: black; border: none; font-size: 20px; } ")
+        self.prev_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 20px; } ")
         self.prev_btn.clicked.connect(self._prev_page)
         self.page_label = QLabel("1 страница из 1")
         self.page_label.setStyleSheet("font-size: 20px; ")
         self.next_btn = QPushButton("→")
         self.next_btn.setFixedWidth(24)
-        self.next_btn.setStyleSheet("QPushButton { background: none; color: black; border: none; font-size: 20px; } ")
+        self.next_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 20px; } ")
         self.next_btn.clicked.connect(self._next_page)
         page_row.addWidget(self.prev_btn)
         page_row.addWidget(self.page_label)
@@ -167,32 +167,24 @@ class DiaryWindow(BaseWindow):
 
         layout.addWidget(filter_card)
 
-        self._load_activity_types()
+        # ✅ Сначала грузим данные, потом заполняем фильтры
         self._refresh()
 
-    def _load_activity_types(self):
-        """Загружает уникальные типы занятий пользователя через get_diary_entries"""
-        from core.operations import get_diary_entries
-        
-        ok, msg, data = get_diary_entries(self.user_data['id'], page=1, per_page=500)
-        
+    def _load_activity_types_from_entries(self, entries):
+        """Заполняет комбобокс типами занятий из уже загруженных записей"""
         self.activity_combo.clear()
         self.activity_combo.addItem("Все типы")
         
-        if ok and data.get('entries'):
-            unique_types = list(set(
-                entry.activity_type for entry in data['entries'] 
-                if entry.activity_type and entry.activity_type.strip()
+        if entries:
+            unique_types = sorted(set(
+                e.activity_type.strip() for e in entries 
+                if e.activity_type and e.activity_type.strip()
             ))
-            if unique_types:
-                for t in sorted(unique_types):
-                    self.activity_combo.addItem(t)
-                self.activity_combo.setEnabled(True)
-            else:
-                self.activity_combo.addItem("У вас отсутствуют типы занятий")
-                self.activity_combo.setEnabled(False)
+            for t in unique_types:
+                self.activity_combo.addItem(t)
+            self.activity_combo.setEnabled(True)
         else:
-            self.activity_combo.addItem("У вас отсутствуют типы занятий")
+            self.activity_combo.addItem("Типы не найдены")
             self.activity_combo.setEnabled(False)
 
     def _apply_filter(self):
@@ -200,7 +192,7 @@ class DiaryWindow(BaseWindow):
         self.start_date = self.range_start.date().toPyDate()
         self.end_date = self.range_end.date().toPyDate()
         act = self.activity_combo.currentText()
-        if act in ("Все типы", "У вас отсутствуют типы занятий", "Загрузка..."):
+        if act in ("Все типы", "Типы не найдены", "Загрузка..."):
             self.activity_filter = None
         else:
             self.activity_filter = act
@@ -212,12 +204,11 @@ class DiaryWindow(BaseWindow):
         self.add_win.show()
 
     def _force_refresh(self):
+        """Полный сброс фильтров после добавления записи"""
         self.start_date = None
         self.end_date = None
         self.activity_filter = None
         self.page = 1
-        
-        self._load_activity_types()
         self._refresh()
 
     def _refresh(self):
@@ -238,7 +229,7 @@ class DiaryWindow(BaseWindow):
 
         if not ok:
             QMessageBox.warning(self, "Ошибка", msg)
-            print(msg)  
+            print(msg)
             return
 
         entries = data.get('entries', [])
@@ -250,7 +241,12 @@ class DiaryWindow(BaseWindow):
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; ")
             self.scroll_layout.addWidget(empty)
+            # ✅ Очищаем фильтры если нет данных
+            self.activity_combo.clear()
+            self.activity_combo.addItem("Все типы")
         else:
+            # ✅ Заполняем фильтры из реальных данных (без отдельного запроса)
+            self._load_activity_types_from_entries(entries)
             for entry in entries:
                 date_lbl = QLabel(f"Дата: <span style='color:#888'>{entry.date}</span>")
                 date_lbl.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 6px; background: transparent;")

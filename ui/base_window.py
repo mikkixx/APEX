@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QMessageBox
 from PyQt6.QtCore import Qt
 
 class BaseWindow(QMainWindow):
@@ -39,37 +39,39 @@ class BaseWindow(QMainWindow):
         self.navbar.nav_logout.connect(self._logout)
         self._main_layout.addWidget(self.navbar)
 
-    def _navigate(self, tab_key):
-        if tab_key == self.active_tab:
+    def _navigate(self, tab):
+        if tab == self.active_tab:
             return
+        try:
+            if tab == "training":
+                from ui.training_plan_window import TrainingPlanWindow
+                w = TrainingPlanWindow(self.user_data)
+            elif tab == "diary":
+                from ui.diary_window import DiaryWindow
+                w = DiaryWindow(self.user_data)
+            elif tab == "medical":
+                from ui.medical_window import MedicalWindow
+                w = MedicalWindow(self.user_data)
+            elif tab == "profile":
+                from ui.profile_window import ProfileWindow
+                w = ProfileWindow(self.user_data)
+            elif tab == "chats":
+                from ui.chats_window import ChatsWindow
+                w = ChatsWindow(self.user_data)
+            else:
+                return
+
+            w.show()
+            # ✅ ИСПОЛЬЗУЕМ hide() ВМЕСТО close(), ЧТОБЫ ПРИЛОЖЕНИЕ НЕ ЗАКРЫВАЛОСЬ ПРИ ОШИБКЕ
+            self.hide() 
             
-        # ✅ Единый роутер для всех ролей
-        if tab_key == "training":
-            from ui.training_plan_window import TrainingPlanWindow
-            w = TrainingPlanWindow(self.user_data)
-        elif tab_key == "diary":
-            from ui.diary_window import DiaryWindow
-            w = DiaryWindow(self.user_data)
-        elif tab_key == "medical":
-            from ui.medical_window import MedicalWindow
-            w = MedicalWindow(self.user_data)
-        elif tab_key == "athletes":
-            from ui.my_athletes_window import MyAthletesWindow
-            w = MyAthletesWindow(self.user_data)
-        elif tab_key == "reports":
-            from ui.reports_window import ReportsWindow
-            w = ReportsWindow(self.user_data)
-        elif tab_key == "profile":
-            from ui.profile_window import ProfileWindow
-            w = ProfileWindow(self.user_data)
-        elif tab_key == "chats":
-            from ui.chats_window import ChatsWindow
-            w = ChatsWindow(self.user_data)
-        else:
-            return
-            
-        w.show()
-        self.close()
+        except Exception as e:
+            import traceback
+            import sys
+            print(f"\n🔴 КРИТИЧЕСКАЯ ОШИБКА при открытии вкладки '{tab}':")
+            traceback.print_exc()
+            sys.stderr.flush()  # Принудительно сбрасываем буфер консоли
+            QMessageBox.critical(self, "Ошибка инициализации", f"Не удалось открыть окно:\n{e}")
 
     def _logout(self):
         from ui.login_window import LoginWindow
