@@ -153,6 +153,7 @@ class ProfileWindow(BaseWindow):
         # ✅ Заглушка если фото нет
         self.photo_label.clear()
         self.photo_label.setText("Нет фото")
+        self.photo_label.setFixedSize(380, 380)
         self.photo_label.setStyleSheet("""
             QLabel { border: 1.5px dashed #cccccc; border-radius: 20px;
                 background: #eeeeee; color: #aaa; font-size: 20px; }

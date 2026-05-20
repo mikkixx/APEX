@@ -437,7 +437,7 @@ def get_chat_partners(current_user_id):
         
         partners = User.select().where(User.id << partner_ids).order_by(User.last_name)
         result = [
-            {'id': p.id, 'full_name': f"{p.last_name} {p.first_name} {p.middle_name or ''}".strip(), 'photo_path': p.photo_path} 
+            {'id': p.id, 'full_name': f"{p.last_name} {p.first_name} {p.middle_name or ''}".strip(), 'photo_path': p.photo_path, 'role': p.role, 'specialization': p.specialization} 
             for p in partners
         ]
         return True, 'Список загружен', result

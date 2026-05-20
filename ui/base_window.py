@@ -1,10 +1,17 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QMessageBox
 from PyQt6.QtCore import Qt
 
+SPECIALIST_ROLES = ('тренер', 'врач', 'coach', 'doctor')
+
+def _is_specialist(user_data):
+    return str(user_data.get('role', '')).lower() in SPECIALIST_ROLES
+
+
 class BaseWindow(QMainWindow):
     active_tab = ""
-    # ✅ Вкладки по умолчанию (Спортсмен)
-    NAV_TABS = [
+
+    # Вкладки спортсмена
+    ATHLETE_TABS = [
         ("Тренировочный план", "training"),
         ("Дневник нагрузок",   "diary"),
         ("Медкарта",           "medical"),
@@ -12,9 +19,19 @@ class BaseWindow(QMainWindow):
         ("Чаты",               "chats"),
     ]
 
+    # Вкладки специалиста (тренер / врач)
+    SPECIALIST_TABS = [
+        ("Мои спортсмены", "athletes"),
+        ("Отчеты",         "reports"),
+        ("Профиль",        "profile"),
+        ("Чаты",           "chats"),
+    ]
+
     def __init__(self, user_data):
         super().__init__()
         self.user_data = user_data
+        # Выбираем набор вкладок по роли
+        self.NAV_TABS = self.SPECIALIST_TABS if _is_specialist(user_data) else self.ATHLETE_TABS
         self.setMinimumSize(1200, 750)
         self.setWindowTitle("APEX")
 
@@ -33,7 +50,6 @@ class BaseWindow(QMainWindow):
 
     def _build_navbar(self):
         from ui.navbar import NavBar
-        # ✅ Передаем список вкладок и активный ключ
         self.navbar = NavBar(tabs=self.NAV_TABS, active_tab=self.active_tab)
         self.navbar.nav_requested.connect(self._navigate)
         self.navbar.nav_logout.connect(self._logout)
@@ -43,6 +59,9 @@ class BaseWindow(QMainWindow):
         if tab == self.active_tab:
             return
         try:
+            w = None
+
+            # ── Вкладки спортсмена ────────────────────────────────────
             if tab == "training":
                 from ui.training_plan_window import TrainingPlanWindow
                 w = TrainingPlanWindow(self.user_data)
@@ -52,28 +71,38 @@ class BaseWindow(QMainWindow):
             elif tab == "medical":
                 from ui.medical_window import MedicalWindow
                 w = MedicalWindow(self.user_data)
+
+            # ── Вкладки специалиста ───────────────────────────────────
+            elif tab == "athletes":
+                from ui.my_athletes_window import MyAthletesWindow
+                w = MyAthletesWindow(self.user_data)
+            elif tab == "reports":
+                from ui.reports_window import ReportsWindow
+                w = ReportsWindow(self.user_data)
+
+            # ── Общие вкладки ─────────────────────────────────────────
             elif tab == "profile":
                 from ui.profile_window import ProfileWindow
                 w = ProfileWindow(self.user_data)
             elif tab == "chats":
                 from ui.chats_window import ChatsWindow
                 w = ChatsWindow(self.user_data)
-            else:
+
+            if w is None:
                 return
 
-            # ✅ Сохраняем ссылку на новое окно, скрываем текущее, затем показываем новое
+            # Сначала показываем новое — потом закрываем текущее,
+            # чтобы Qt не видел момента «0 открытых окон».
             self._next_window = w
-            self.hide()
             w.show()
+            self.close()
 
         except Exception as e:
-            import traceback
-            import sys
-            print(f"\n🔴 КРИТИЧЕСКАЯ ОШИБКА при открытии вкладки '{tab}':")
+            import traceback, sys
+            print(f"\n🔴 ОШИБКА при открытии вкладки '{tab}':")
             traceback.print_exc()
             sys.stderr.flush()
-            self.show()  # Восстанавливаем текущее окно если новое не открылось
-            QMessageBox.critical(self, "Ошибка инициализации", f"Не удалось открыть окно:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть окно:\n{e}")
 
     def _logout(self):
         from ui.login_window import LoginWindow
@@ -82,12 +111,6 @@ class BaseWindow(QMainWindow):
         self.close()
 
 
+# Оставляем для обратной совместимости — теперь просто алиас
 class SpecialistBaseWindow(BaseWindow):
-    """Базовое окно для тренера/врача. Наследует всю логику, переопределяет только вкладки."""
-    # ✅ Переопределяем список вкладок для специалистов
-    NAV_TABS = [
-        ("Мои спортсмены", "athletes"),
-        ("Отчеты",         "reports"),
-        ("Профиль",        "profile"),
-        ("Чаты",           "chats"),
-    ]
+    pass
