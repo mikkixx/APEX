@@ -311,7 +311,7 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
         if exam_date:
             if exam_date > date.today():
                 return False, 'Дата не может быть в будущем', None
-            conditions.append(MedicalExam.exam_date == exam_date)
+            conditions.append(MedicalExam.exam_date <= exam_date)
         
         if exam_type and exam_type.strip():
             conditions.append(MedicalExam.exam_type == exam_type.strip())
@@ -501,6 +501,8 @@ def get_chat_messages(current_user_id, partner_id, search_query=None, start_date
         return True, 'Сообщения загружены', result
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
+    except Exception as e:
+        return False, f"Ошибка загрузки сообщений: {e}", None
 
 def send_message(sender_id, receiver_id, text):
     clean_text = text.strip()

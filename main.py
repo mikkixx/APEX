@@ -6,6 +6,7 @@ from ui.login_window import LoginWindow
 
 def main():
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # ✅ Не закрывать приложение при скрытии окна
 
     font_id = QFontDatabase.addApplicationFont("fonts/Alegreya-Regular.ttf")
     if font_id != -1:

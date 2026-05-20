@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QFrame, QTextEdit,
     QLineEdit, QMessageBox, QListWidget, QListWidgetItem,
-    QInputDialog, QSizePolicy, QDateEdit
+    QSizePolicy, QDateEdit, QDialog
 )
 from PyQt6.QtCore import Qt, QDate, QTimer
 from PyQt6.QtGui import QPixmap, QFont
@@ -34,7 +34,7 @@ class ChatsWindow(BaseWindow):
 
         # Left panel - partner list
         left_panel = QFrame()
-        left_panel.setFixedWidth(220)
+        left_panel.setFixedWidth(250)
         left_panel.setStyleSheet("""
             QFrame { border: none; border-right: 1px solid #e0e0e0;
                 border-radius: 0px; background: #f5f5f5;
@@ -46,8 +46,8 @@ class ChatsWindow(BaseWindow):
 
         self.partner_list = QListWidget()
         self.partner_list.setStyleSheet("""
-            QListWidget { border: none; background: transparent; font-size: 20px; }
-            QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #e8e8e8; }
+            QListWidget { border: none; background: transparent; font-size: 20px; font-family: "Alegreya" }
+            QListWidget::item { padding: 8px 12px }
             QListWidget::item:selected { background: #e0e0e0; }
             QListWidget::item:hover { background: #eaeaea; }
         """)
@@ -58,7 +58,7 @@ class ChatsWindow(BaseWindow):
         add_partner_btn.setStyleSheet("""
             QPushButton { background: #1a1a1a; color: white; border-radius: 0px;
                 border-bottom-left-radius: 20px; padding: 14px;
-                font-size: 18px; border: none; }
+                font-size: 20px; border: none; }
             QPushButton:hover { background: #333; }
         """)
         add_partner_btn.clicked.connect(self._add_partner)
@@ -87,31 +87,79 @@ class ChatsWindow(BaseWindow):
         partner_info_row.addStretch()
         right_layout.addLayout(partner_info_row)
 
-        # ✅ Search & filter (ИСПРАВЛЕНИЕ: убран setPrefix, добавлены QLabel)
+        # ✅ Search & filter — все элементы 20px
         search_row = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск")
-        self.search_input.setFixedHeight(40)
+        self.search_input.setFixedHeight(52)
+        self.search_input.setStyleSheet("""
+            QLineEdit { 
+                border: 1.5px solid #cccccc; 
+                border-radius: 20px; 
+                padding: 0 16px; 
+                font-size: 20px; 
+                background: #ffffff; 
+            }
+        """)
         
         self.date_filter = QDateEdit(calendarPopup=True)
         self.date_filter.setDate(QDate.currentDate().addDays(-30))
-        self.date_filter.setFixedHeight(40)
+        self.date_filter.setFixedSize(140, 52)
+        self.date_filter.setFont(QFont("Alegreya", 20))
+        self.date_filter.setStyleSheet("""
+            QDateEdit { 
+                border: 1.5px solid #cccccc; 
+                border-radius: 20px; 
+                padding: 0 12px; 
+                font-size: 20px; 
+                background: #ffffff; 
+            }
+            QDateEdit::drop-down { border: none; }
+        """)
         
         self.date_end = QDateEdit(calendarPopup=True)
         self.date_end.setDate(QDate.currentDate())
-        self.date_end.setFixedHeight(40)
+        self.date_filter.setFixedSize(140, 52)
+        self.date_end.setFont(QFont("Alegreya", 20))
+        self.date_end.setStyleSheet("""
+            QDateEdit { 
+                border: 1.5px solid #cccccc; 
+                border-radius: 20px; 
+                padding: 0 12px; 
+                font-size: 20px; 
+                background: #ffffff; 
+            }
+            QDateEdit::drop-down { border: none; }
+        """)
         
         apply_search_btn = QPushButton("Применить")
         apply_search_btn.setFixedWidth(157)
-        apply_search_btn.setFixedHeight(55)
+        apply_search_btn.setFixedHeight(48)
+        apply_search_btn.setFont(QFont("Alegreya", 20))
+        apply_search_btn.setStyleSheet("""
+            QPushButton { 
+                background: #1a1a1a; 
+                color: white; 
+                border-radius: 20px; 
+                font-size: 20px; 
+                font-weight: bold; 
+            }
+            QPushButton:hover { background: #333; }
+        """)
         apply_search_btn.clicked.connect(self._reload_messages)
+        
+        # Метки "С:" и "По:" с шрифтом 20px
+        lbl_from = QLabel("С:")
+        lbl_from.setStyleSheet("font-size: 20px")
+        lbl_to = QLabel("По:")
+        lbl_to.setStyleSheet("font-size: 20px")
         
         # Порядок: Поиск -> С: [календарь] -> По: [календарь] -> Применить
         search_row.addWidget(self.search_input)
-        search_row.addWidget(QLabel("С:"))
+        search_row.addWidget(lbl_from)
         search_row.addWidget(self.date_filter)
         search_row.addSpacing(8)
-        search_row.addWidget(QLabel("По:"))
+        search_row.addWidget(lbl_to)
         search_row.addWidget(self.date_end)
         search_row.addWidget(apply_search_btn)
         right_layout.addLayout(search_row)
@@ -132,9 +180,21 @@ class ChatsWindow(BaseWindow):
         self.msg_input = QTextEdit()
         self.msg_input.setPlaceholderText("Новое сообщение")
         self.msg_input.setFixedHeight(100)
+        self.msg_input.setStyleSheet("font-size: 20px; padding: 8px;")
         send_btn = QPushButton("Отправить")
         send_btn.setFixedWidth(157)
-        send_btn.setFixedHeight(55)
+        send_btn.setFixedHeight(48)
+        send_btn.setFont(QFont("Alegreya", 20))
+        send_btn.setStyleSheet("""
+            QPushButton { 
+                background: #1a1a1a; 
+                color: white; 
+                border-radius: 20px; 
+                font-size: 20px; 
+                font-weight: bold; 
+            }
+            QPushButton:hover { background: #333; }
+        """)
         send_btn.clicked.connect(self._send_message)
         send_row.addWidget(self.msg_input)
         send_row.addWidget(send_btn)
@@ -214,7 +274,8 @@ class ChatsWindow(BaseWindow):
 
         text_lbl = QLabel(message['text'])
         text_lbl.setWordWrap(True)
-        text_lbl.setStyleSheet(f"color: {'white' if is_mine else '#1a1a1a'}; font-size: 20px; border-raduis: 20px")
+        # ✅ Исправлена опечатка: border-raduis → border-radius
+        text_lbl.setStyleSheet(f"color: {'white' if is_mine else '#1a1a1a'}; font-size: 20px; border-radius: 20px;")
         text_lbl.setMaximumWidth(500)
         bubble_layout.addWidget(text_lbl)
 
@@ -235,7 +296,7 @@ class ChatsWindow(BaseWindow):
 
     def _send_message(self):
         if not self.current_partner:
-            QMessageBox.warning(self, "Ошибка", "Выберите собеседника")
+            self._show_popup("Ошибка", "Выберите собеседника", QMessageBox.Icon.Warning)
             return
         text = self.msg_input.toPlainText().strip()
         if not text:
@@ -246,24 +307,112 @@ class ChatsWindow(BaseWindow):
             self.msg_input.clear()
             self._reload_messages()
         else:
-            QMessageBox.warning(self, "Ошибка", msg)
+            self._show_popup("Ошибка", msg, QMessageBox.Icon.Warning)
+
+    def _show_popup(self, title, text, icon, ok_text="Хорошо"):
+        """Вспомогательный метод для единых попапов: Alegreya 20px + русские кнопки"""
+        msg = QMessageBox(self)
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setIcon(icon)
+        msg.setFont(QFont("Alegreya", 20))
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.button(QMessageBox.StandardButton.Ok).setText(ok_text)
+        msg.exec()
 
     def _add_partner(self):
-        email, ok = QInputDialog.getText(self, "Добавить собеседника", "Введите email пользователя:")
-        if not ok or not email.strip():
-            return
-        from core.operations import add_chat_partner
-        success, msg, partner_data = add_chat_partner(self.user_data['id'], email.strip())
-        if success:
-            # Check if already in list
-            for p in self.partners:
-                if p['id'] == partner_data['id']:
-                    QMessageBox.information(self, "Инфо", "Собеседник уже добавлен.")
-                    return
-            self.partners.append(partner_data)
-            item = QListWidgetItem(f"  {partner_data['full_name']}")
-            item.setData(Qt.ItemDataRole.UserRole, partner_data)
-            self.partner_list.addItem(item)
-            self.partner_list.setCurrentRow(len(self.partners) - 1)
-        else:
-            QMessageBox.warning(self, "Ошибка", msg)
+        # ✅ Кастомный диалог вместо QInputDialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Добавить собеседника")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(420)
+        dialog.setFont(QFont("Alegreya", 20))
+        
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 20, 24, 24)
+        layout.setSpacing(12)
+        
+        title = QLabel("Email пользователя:")
+        title.setStyleSheet("font-weight: bold; font-size: 20px;")
+        layout.addWidget(title)
+        
+        email_input = QLineEdit()
+        email_input.setPlaceholderText("Введите email")
+        email_input.setFixedHeight(52)
+        email_input.setStyleSheet("""
+            QLineEdit { 
+                border: 1.5px solid #cccccc; 
+                border-radius: 20px; 
+                padding: 0 16px; 
+                font-size: 20px; 
+                background: #ffffff; 
+            }
+        """)
+        layout.addWidget(email_input)
+        
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.setFixedWidth(140)
+        cancel_btn.setFixedHeight(52)
+        cancel_btn.setFont(QFont("Alegreya", 20))
+        cancel_btn.setStyleSheet("""
+            QPushButton { 
+                background: transparent; 
+                color: #1a1a1a; 
+                border: 1.5px solid #1a1a1a; 
+                border-radius: 20px; 
+                font-size: 20px; 
+            }
+            QPushButton:hover { background: #f0f0f0; }
+        """)
+        
+        add_btn = QPushButton("Добавить")
+        add_btn.setFixedWidth(140)
+        add_btn.setFixedHeight(52)
+        add_btn.setFont(QFont("Alegreya", 20))
+        add_btn.setStyleSheet("""
+            QPushButton { 
+                background: #1a1a1a; 
+                color: white; 
+                border-radius: 20px; 
+                font-size: 20px; 
+                font-weight: bold; 
+            }
+            QPushButton:hover { background: #333; }
+        """)
+        
+        btn_row.addWidget(cancel_btn)
+        btn_row.addSpacing(10)
+        btn_row.addWidget(add_btn)
+        layout.addLayout(btn_row)
+        
+        result = {"email": None}
+        
+        def on_add():
+            result["email"] = email_input.text().strip()
+            dialog.accept()
+        def on_cancel():
+            dialog.reject()
+            
+        add_btn.clicked.connect(on_add)
+        cancel_btn.clicked.connect(on_cancel)
+        email_input.returnPressed.connect(on_add)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted and result["email"]:
+            from core.operations import add_chat_partner
+            success, msg, partner_data = add_chat_partner(self.user_data['id'], result["email"])
+            if success:
+                # Check if already in list
+                for p in self.partners:
+                    if p['id'] == partner_data['id']:
+                        self._show_popup("Инфо", "Собеседник уже добавлен.", QMessageBox.Icon.Information)
+                        return
+                self.partners.append(partner_data)
+                item = QListWidgetItem(f"  {partner_data['full_name']}")
+                item.setData(Qt.ItemDataRole.UserRole, partner_data)
+                self.partner_list.addItem(item)
+                self.partner_list.setCurrentRow(len(self.partners) - 1)
+            else:
+                self._show_popup("Ошибка", msg, QMessageBox.Icon.Warning)

@@ -61,16 +61,18 @@ class BaseWindow(QMainWindow):
             else:
                 return
 
+            # ✅ Сохраняем ссылку на новое окно, скрываем текущее, затем показываем новое
+            self._next_window = w
+            self.hide()
             w.show()
-            # ✅ ИСПОЛЬЗУЕМ hide() ВМЕСТО close(), ЧТОБЫ ПРИЛОЖЕНИЕ НЕ ЗАКРЫВАЛОСЬ ПРИ ОШИБКЕ
-            self.hide() 
-            
+
         except Exception as e:
             import traceback
             import sys
             print(f"\n🔴 КРИТИЧЕСКАЯ ОШИБКА при открытии вкладки '{tab}':")
             traceback.print_exc()
-            sys.stderr.flush()  # Принудительно сбрасываем буфер консоли
+            sys.stderr.flush()
+            self.show()  # Восстанавливаем текущее окно если новое не открылось
             QMessageBox.critical(self, "Ошибка инициализации", f"Не удалось открыть окно:\n{e}")
 
     def _logout(self):
