@@ -17,7 +17,6 @@ class AthleteNavBar(QWidget):
 
     def _build(self):
         self.setFixedHeight(80)
-        # ✅ Убрана линия под навбаром (border-bottom удалён)
         self.setStyleSheet("QWidget { background: #ffffff; }")
         
         layout = QHBoxLayout(self)
@@ -35,10 +34,9 @@ class AthleteNavBar(QWidget):
         logo_label.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(logo_label)
 
-        # 🔹 2. Растяжка слева от вкладок (центрирует навигацию)
         layout.addStretch(1)
 
-        # 🔹 3. Контейнер для вкладок (будет по центру экрана)
+        # 🔹 2. Контейнер для вкладок (будет по центру экрана)
         tabs_widget = QWidget()
         tabs_layout = QHBoxLayout(tabs_widget)
         tabs_layout.setContentsMargins(0, 0, 0, 0)
@@ -53,6 +51,17 @@ class AthleteNavBar(QWidget):
 
         for label, key in tabs:
             is_active = (key == self.active_tab)
+            
+            # ✅ Определяем целевой ключ окна в зависимости от роли
+            if key == "training":
+                target_key = "athlete_training_coach" if self.viewer_role == 'тренер' else "athlete_training_doctor"
+            elif key == "diary":
+                target_key = "athlete_diary_specialist"
+            elif key == "medical":
+                target_key = "athlete_medical_coach" if self.viewer_role == 'тренер' else "athlete_medical_doctor"
+            else:
+                target_key = key  # profile остается без изменений
+
             btn = QPushButton(label)
             btn.setFlat(True)
             btn.setStyleSheet(f"""
@@ -66,18 +75,16 @@ class AthleteNavBar(QWidget):
                 }}
                 QPushButton:hover {{ color: #1a1a1a; }}
             """)
-            btn.clicked.connect(lambda checked, k=key: self.on_tab(k))
+            # ✅ Передаем точный ключ окна (без проблем с замыканием)
+            btn.clicked.connect(lambda checked, t=target_key: self.on_tab(t))
             tabs_layout.addWidget(btn)
 
         layout.addWidget(tabs_widget)
-
-        # 🔹 4. Растяжка справа от вкладок (центрирует навигацию)
         layout.addStretch(1)
 
-        # 🔹 5. Пустой виджет справа, чтобы сбалансировать ширину лого слева
-        # (иначе навигация уедет чуть правее центра из-за ширины логотипа)
+        # 🔹 3. Балансировка (компенсирует ширину лого слева)
         spacer = QWidget()
-        spacer.setFixedWidth(60)  # Примерная ширина логотипа
+        spacer.setFixedWidth(60)
         layout.addWidget(spacer)
 
 
@@ -119,22 +126,60 @@ class AthleteProfileWindow(QMainWindow):
             if item.widget():
                 item.widget().deleteLater()
 
-    def _switch_tab(self, tab):
-        if tab == self.current_tab:
+    def _switch_tab(self, tab_key):
+        if tab_key == self.current_tab:
             return
-        self.current_tab = tab
+
+        self.current_tab = tab_key
+        # Определяем базовый ключ для подсветки активной вкладки в навбаре
+        base_tab = "profile"
+        if "training" in tab_key: base_tab = "training"
+        elif "diary" in tab_key: base_tab = "diary"
+        elif "medical" in tab_key: base_tab = "medical"
+
+        # Обновляем навбар
         self._main_layout.removeWidget(self.navbar)
         self.navbar.deleteLater()
         self.navbar = AthleteNavBar(
-            active_tab=tab,
+            active_tab=base_tab,
             on_tab=self._switch_tab,
             viewer_role=self.viewer_data.get('role', '')
         )
         self._main_layout.insertWidget(0, self.navbar)
         self._clear_content()
 
-        if tab == "profile":
+        # ✅ Маршрутизация по новым ключам
+        if tab_key == "profile":
             self._show_profile()
+        elif "training" in tab_key:
+            from ui.training_plan_window import TrainingPlanWindow
+            self._navigate_to(TrainingPlanWindow)
+        elif tab_key == "athlete_diary_specialist":
+            from ui.diary_window import DiaryWindow
+            self._navigate_to(DiaryWindow)
+        elif "medical" in tab_key:
+            from ui.medical_window import MedicalWindow
+            self._navigate_to(MedicalWindow)
+
+    def _navigate_to(self, window_class):
+        """Безопасно открывает окно специалиста, передавая ровно 1 аргумент"""
+        try:
+            # ❗ Эти окна ожидают только self + user_data (данные тренера/врача)
+            win = window_class(self.viewer_data)
+            win.show()
+            self.hide()  # Скрываем профиль, чтобы приложение не закрылось
+        except Exception as e:
+            import traceback
+            print(f"❌ Ошибка открытия {window_class.__name__}: {e}")
+            traceback.print_exc()
+            
+            from PyQt6.QtWidgets import QMessageBox
+            from PyQt6.QtGui import QFont
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Ошибка навигации")
+            msg.setText(f"Не удалось открыть окно:\n{e}")
+            msg.setFont(QFont("Alegreya", 18))
+            msg.exec()
 
     def _show_popup(self, title, text, icon, ok_text="ОК"):
         """Вспомогательный метод для единых попапов: Alegreya 20px + русские кнопки"""

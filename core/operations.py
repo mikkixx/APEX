@@ -1445,151 +1445,294 @@ def add_medical_recommendation(doctor_id, exam_id, text):
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
     
-def generate_report(specialist_id, athlete_id, report_type, start_date, end_date, format='excel'):
+def generate_report(specialist_id, athlete_id, report_type, start_date, end_date, fmt='excel', save_dir='./reports', report_name='Отчёт'):
+    """
+    report_type: 'general' | 'medical' | 'training' | 'diary'
+    """
     try:
         if db.is_closed():
             db.connect()
 
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна')
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
-
-        os.makedirs('./reports', exist_ok=True)
-        filename = f"./reports/report_{athlete_id}_{date.today().strftime('%Y%m%d')}.{format}"
-
-        sessions_data = []
-        exams = []
-        
-        if report_type == 'training':
-            plans = TrainingPlan.select().where(
-                (TrainingPlan.athlete == athlete_id) &
-                (TrainingPlan.start_date >= start_date) &
-                (TrainingPlan.end_date <= end_date)
-            )
-            for plan in plans:
-                sessions = Session.select().where(
-                    (Session.plan == plan) & (Session.is_deleted == False)
-                )
-                for s in sessions:
-                    sessions_data.append({
-                        'date': str(s.date),
-                        'activity': s.activity_type,
-                        'duration': s.duration,
-                        'status': s.status
-                    })
-                    
-        elif report_type == 'medical':
-            exams = MedicalExam.select().where(
-                (MedicalExam.athlete == athlete_id) &
-                (MedicalExam.exam_date >= start_date) &
-                (MedicalExam.exam_date <= end_date)
-            )
+        # Проверяем/собираем список спортсменов
+        if athlete_id is not None:
+            if not SpecialistBinding.select().where(
+                (SpecialistBinding.athlete == athlete_id) &
+                (SpecialistBinding.specialist == specialist_id) &
+                (SpecialistBinding.status == 'активна')
+            ).exists():
+                return False, 'Спортсмен не закреплён за вами', None
+            athlete_ids = [athlete_id]
         else:
-            return False, 'Неподдерживаемый тип отчёта. Доступно: training, medical', None
+            bindings = SpecialistBinding.select().where(
+                (SpecialistBinding.specialist == specialist_id) &
+                (SpecialistBinding.status == 'активна')
+            )
+            athlete_ids = [b.athlete_id for b in bindings]
+            if not athlete_ids:
+                return False, 'У вас нет закреплённых спортсменов', None
 
-        if format == 'excel':
+        os.makedirs(save_dir, exist_ok=True)
+        
+        suffix = athlete_id if athlete_id else 'all'
+        ext = 'xlsx' if fmt == 'excel' else 'pdf'
+        safe_name = report_name.replace('/', '_').replace('\\', '_').replace(':', '_')
+        filename = f"{save_dir}/{safe_name}_{suffix}_{date.today().strftime('%Y%m%d')}.{ext}"
+
+        include_training = report_type in ('general', 'training')
+        include_medical  = report_type in ('general', 'medical')
+        include_diary    = report_type in ('general', 'diary')
+
+        def get_athlete_name(aid):
+            try:
+                u = User.get_by_id(aid)
+                return f"{u.last_name} {u.first_name}"
+            except Exception:
+                return str(aid)
+
+        training_rows = []
+        medical_rows  = []
+        diary_rows    = []
+        period_str = f"Период: {start_date} — {end_date}"
+
+        for aid in athlete_ids:
+            aname = get_athlete_name(aid)
+
+            if include_training:
+                plans = TrainingPlan.select().where(
+                    (TrainingPlan.athlete == aid) &
+                    (TrainingPlan.start_date <= end_date) &
+                    (TrainingPlan.end_date >= start_date)
+                )
+                for plan in plans:
+                    sessions = Session.select().where(
+                        (Session.plan == plan) & (Session.is_deleted == False) &
+                        (Session.date >= start_date) & (Session.date <= end_date)
+                    )
+                    for s in sessions:
+                        training_rows.append([
+                            aname, str(s.date), s.activity_type or '',
+                            s.duration, s.status or ''
+                        ])
+
+            if include_medical:
+                exams = MedicalExam.select().where(
+                    (MedicalExam.athlete == aid) &
+                    (MedicalExam.exam_date >= start_date) &
+                    (MedicalExam.exam_date <= end_date)
+                )
+                for exam in exams:
+                    metrics = MedicalMetric.select().where(MedicalMetric.exam == exam)
+                    for m in metrics:
+                        medical_rows.append([
+                            aname, str(exam.exam_date), exam.exam_type or '',
+                            m.metric_type or '',
+                            str(m.value) if m.value is not None else '',
+                            m.unit or '',
+                            'Да' if m.is_critical else 'Нет'
+                        ])
+
+            if include_diary:
+                entries = TrainingDiary.select().where(
+                    (TrainingDiary.athlete == aid) &
+                    (TrainingDiary.date >= start_date) &
+                    (TrainingDiary.date <= end_date) &
+                    (TrainingDiary.is_deleted == False)
+                )
+                for d in entries:
+                    diary_rows.append([
+                        aname, str(d.date), d.activity_type or '', d.duration,
+                        d.steps, d.sleep_hours, d.fatigue, d.mood
+                    ])
+
+        if not training_rows and not medical_rows and not diary_rows:
+            return False, 'Данных за выбранный период не найдено.', None
+
+        # ── EXCEL ─────────────────────────────────────────────────────
+        if fmt == 'excel':
             try:
                 from openpyxl import Workbook
-                wb = Workbook()
-                ws = wb.active
-                ws.title = 'Тренировки' if report_type == 'training' else 'Медосмотры'
-                
-                if report_type == 'training':
-                    ws.append(['Дата', 'Активность', 'Длительность (мин)', 'Статус'])
-                    for row in sessions_data:
-                        ws.append([row['date'], row['activity'], row['duration'], row['status']])
-                else:
-                    ws.append(['Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'])
-                    for exam in exams:
-                        metrics = MedicalMetric.select().where(MedicalMetric.exam == exam)
-                        for m in metrics:
-                            ws.append([
-                                str(exam.exam_date), exam.exam_type, m.metric_type,
-                                str(m.value) if m.value is not None else '', m.unit,
-                                'Да' if m.is_critical else 'Нет'
-                            ])
-                wb.save(filename)
+                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
             except ImportError:
                 return False, 'Установите openpyxl: pip install openpyxl', None
 
-        elif format == 'pdf':
+            wb = Workbook()
+            wb.remove(wb.active)
+            header_font_white = Font(bold=True, size=11, color="FFFFFF")
+            header_fill = PatternFill("solid", fgColor="1a1a1a")
+            title_font = Font(bold=True, size=14, color="1a1a1a")
+            period_font = Font(size=11, color="555555")
+
+            def make_sheet(ws, headers, rows, title_text, period_text):
+                # 1. Заголовок и период
+                from openpyxl.utils import get_column_letter
+                last_col = len(headers)
+                ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
+                title_cell = ws.cell(row=1, column=1, value=title_text)
+                title_cell.font = title_font
+                title_cell.alignment = Alignment(horizontal='center')
+
+                ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
+                period_cell = ws.cell(row=2, column=1, value=period_text)
+                period_cell.font = period_font
+                period_cell.alignment = Alignment(horizontal='center')
+
+                # 2. Шапка таблицы
+                for col_idx, h in enumerate(headers, 1):
+                    cell = ws.cell(row=3, column=col_idx, value=h)
+                    cell.font = header_font_white
+                    cell.fill = header_fill
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    cell.border = Border(bottom=Side(style='medium'))
+
+                # 3. Данные
+                for r_idx, row_data in enumerate(rows, 4):
+                    for c_idx, val in enumerate(row_data, 1):
+                        cell = ws.cell(row=r_idx, column=c_idx, value=val)
+                        cell.alignment = Alignment(vertical='top', wrap_text=True)
+
+                # 4. ✅ Умная ширина колонок (без наложений)
+                for c in range(1, last_col + 1):
+                    col_letter = get_column_letter(c)
+                    max_len = 0
+                    for row in ws.iter_rows(min_col=c, max_col=c, min_row=3):
+                        for cell in row:
+                            if cell.value:
+                                max_len = max(max_len, len(str(cell.value)))
+                    # Кириллица шире, добавляем коэффициент 1.3 и отступ +2
+                    width = min(max(max_len * 1.3 + 2, 12), 45)
+                    ws.column_dimensions[col_letter].width = width
+
+                # Фиксируем первую строку (заголовки) при прокрутке
+                ws.freeze_panes = 'A4'
+
+            if include_training and training_rows:
+                ws = wb.create_sheet('Тренировки')
+                make_sheet(ws, ['Спортсмен', 'Дата', 'Активность', 'Длительность (мин)', 'Статус'], training_rows, report_name, period_str)
+
+            if include_medical and medical_rows:
+                ws = wb.create_sheet('Медосмотры')
+                make_sheet(ws, ['Спортсмен', 'Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'], medical_rows, report_name, period_str)
+
+            if include_diary and diary_rows:
+                ws = wb.create_sheet('Дневник нагрузок')
+                make_sheet(ws, ['Спортсмен', 'Дата', 'Активность', 'Длительность', 'Шаги', 'Сон (ч)', 'Усталость', 'Настроение'], diary_rows, report_name, period_str)
+
+            if not wb.worksheets:
+                ws = wb.create_sheet('Нет данных')
+                ws.cell(row=1, column=1, value='Нет данных за выбранный период')
+
+            wb.save(filename)
+
+        # ── PDF ───────────────────────────────────────────────────────
+        elif fmt == 'pdf':
             try:
-                from reportlab.lib.pagesizes import A4
-                from reportlab.platypus import SimpleDocTemplate, Table, Paragraph, Spacer
-                from reportlab.lib.styles import getSampleStyleSheet
+                from reportlab.lib.pagesizes import A4, landscape
+                from reportlab.platypus import SimpleDocTemplate, Table, Paragraph, Spacer, PageBreak
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
                 from reportlab.lib import colors
                 from reportlab.pdfbase import pdfmetrics
                 from reportlab.pdfbase.ttfonts import TTFont
-                import os as os_sys
-
-                font_path = "C:\\Windows\\Fonts\\arial.ttf"
-                if os_sys.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('Arial', font_path))
-                    font_name = 'Arial'
-                else:
-                    font_name = 'Helvetica'  
-
-                doc = SimpleDocTemplate(filename, pagesize=A4)
-                elements = []
-                styles = getSampleStyleSheet()
-                
-                # Заголовок
-                title_style = styles['Heading1']
-                title_style.fontName = font_name
-                title = Paragraph(f"Отчёт: {report_type.capitalize()}", title_style)
-                elements.append(title)
-                elements.append(Spacer(10, 10))
-
-                table_data = []
-                if report_type == 'training':
-                    headers = ['Дата', 'Активность', 'Длительность (мин)', 'Статус']
-                    table_data = [headers] + [[s['date'], s['activity'], str(s['duration']), s['status']] for s in sessions_data]
-                else:
-                    headers = ['Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично']
-                    table_data = [headers]
-                    for exam in exams:
-                        metrics = MedicalMetric.select().where(MedicalMetric.exam == exam)
-                        for m in metrics:
-                            table_data.append([
-                                str(exam.exam_date), exam.exam_type, m.metric_type,
-                                str(m.value) if m.value is not None else '', m.unit,
-                                'Да' if m.is_critical else 'Нет'
-                            ])
-
-                col_widths = [doc.width / len(headers)] * len(headers)
-                table = Table(table_data, colWidths=col_widths)
-                table.setStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), font_name),
-                    ('FONTSIZE', (0, 0), (-1, 0), 10),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-                    ('FONTNAME', (0, 1), (-1, -1), font_name),
-                    ('FONTSIZE', (0, 1), (-1, -1), 9),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
-                ])
-                elements.append(table)
-                doc.build(elements)
-                
             except ImportError:
                 return False, 'Установите reportlab: pip install reportlab', None
+
+            font_registered = False
+            font_name = 'Helvetica'
+            candidates = [
+                ('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'),
+                ('DejaVu', '/usr/share/fonts/dejavu/DejaVuSans.ttf'),
+                ('Arial',  'C:/Windows/Fonts/arial.ttf'),
+                ('Arial',  '/Library/Fonts/Arial.ttf'),
+                ('FreeSans', '/usr/share/fonts/gnu-free/FreeSans.ttf'),
+            ]
+            for fname, fpath in candidates:
+                if os.path.exists(fpath):
+                    try:
+                        pdfmetrics.registerFont(TTFont(fname, fpath))
+                        font_name = fname
+                        font_registered = True
+                        break
+                    except Exception:
+                        continue
+
+            if not font_registered:
+                try:
+                    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+                    pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
+                    font_name = 'HeiseiMin-W3'
+                    font_registered = True
+                except Exception:
+                    pass
+
+            page = landscape(A4) if report_type == 'general' else A4
+            doc = SimpleDocTemplate(filename, pagesize=page, leftMargin=36, rightMargin=36, topMargin=40, bottomMargin=36)
+            W = doc.width
+
+            h1_style = ParagraphStyle('H1', fontName=font_name, fontSize=18, leading=22, spaceAfter=4, textColor=colors.HexColor('#1a1a1a'), alignment=1)
+            h2_style = ParagraphStyle('H2', fontName=font_name, fontSize=11, leading=17, spaceAfter=1, textColor=colors.HexColor('#555555'))
+            h3_style = ParagraphStyle('H3', fontName=font_name, fontSize=14, leading=18, spaceAfter=8, textColor=colors.HexColor('#1a1a1a'), fontWeight='bold')
+
+            def make_table(headers, rows, col_ratios=None):
+                col_w = [W * r for r in col_ratios] if col_ratios else [W / len(headers)] * len(headers)
+                data = [headers] + rows if rows else [headers, ['Нет данных']]
+                t = Table(data, colWidths=col_w, repeatRows=1)
+                t.setStyle([
+                    ('FONTNAME', (0, 0), (-1, -1), font_name),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a1a')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # ✅ Вертикальное выравнивание по верху
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+                    ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#cccccc')),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('WORDWRAP', (0, 0), (-1, -1), 'CJK') # ✅ Перенос длинных слов
+                ])
+                return t
+
+            elements = []
+            elements.append(Paragraph(report_name, h1_style))
+            elements.append(Paragraph(period_str, h2_style))
+            elements.append(Spacer(1, 12))
+
+            if include_training and training_rows:
+                elements.append(Paragraph('Тренировочные планы', h3_style))
+                t_rows = [[r[0], r[1], r[2], str(r[3]), r[4]] for r in training_rows]
+                # ✅ Сбалансированные пропорции (сумма = 1.0)
+                elements.append(make_table(['Спортсмен', 'Дата', 'Активность', 'Длительность (мин)', 'Статус'], t_rows, col_ratios=[0.20, 0.12, 0.32, 0.18, 0.18]))
+                elements.append(Spacer(1, 16))
+
+            if include_diary and diary_rows:
+                elements.append(Paragraph('Дневник нагрузок', h3_style))
+                d_rows = [[r[0], r[1], r[2], str(r[3]), str(r[4]), str(r[5]), str(r[6]), str(r[7])] for r in diary_rows]
+                elements.append(make_table(['Спортсмен', 'Дата', 'Активность', 'Длительность', 'Шаги', 'Сон', 'Усталость', 'Настроение'], d_rows, col_ratios=[0.14, 0.10, 0.20, 0.11, 0.11, 0.08, 0.08, 0.18]))
+                elements.append(Spacer(1, 16))
+
+            if include_medical and medical_rows:
+                if report_type in ('general', 'diary'):
+                    elements.append(PageBreak())
+                elements.append(Paragraph('Медицинские показатели', h3_style))
+                m_rows = [[r[0], r[1], r[2], r[3], r[4], r[5], r[6]] for r in medical_rows]
+                elements.append(make_table(['Спортсмен', 'Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'], m_rows, col_ratios=[0.16, 0.10, 0.18, 0.22, 0.10, 0.10, 0.14]))
+
+            try:
+                doc.build(elements)
             except Exception as pdf_err:
                 return False, f'Ошибка генерации PDF: {pdf_err}', None
         else:
             return False, 'Неподдерживаемый формат. Используйте excel или pdf', None
 
-        return True, f"Отчёт сохранён: {filename}", {'path': filename}
+        return True, f'Отчёт сохранён: {filename}', {'path': filename}
 
     except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
+        return False, f'Ошибка БД: {e}', None
     except Exception as e:
-        return False, f"Ошибка генерации: {e}", None
-    
+        import traceback; traceback.print_exc()
+        return False, f'Ошибка генерации: {e}', None
+
 def remove_athlete_from_list(specialist_id, athlete_id):
     try:
         if db.is_closed():
