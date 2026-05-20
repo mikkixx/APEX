@@ -131,13 +131,14 @@ class AthleteProfileWindow(QMainWindow):
             return
 
         self.current_tab = tab_key
+
         # Определяем базовый ключ для подсветки активной вкладки в навбаре
         base_tab = "profile"
         if "training" in tab_key: base_tab = "training"
-        elif "diary" in tab_key: base_tab = "diary"
+        elif "diary" in tab_key:  base_tab = "diary"
         elif "medical" in tab_key: base_tab = "medical"
 
-        # Обновляем навбар
+        # Перестраиваем навбар с новой активной вкладкой
         self._main_layout.removeWidget(self.navbar)
         self.navbar.deleteLater()
         self.navbar = AthleteNavBar(
@@ -148,38 +149,34 @@ class AthleteProfileWindow(QMainWindow):
         self._main_layout.insertWidget(0, self.navbar)
         self._clear_content()
 
-        # ✅ Маршрутизация по новым ключам
+        # Маршрутизация — всё рендерится ВНУТРИ content_layout этого окна
         if tab_key == "profile":
             self._show_profile()
-        elif "training" in tab_key:
-            from ui.training_plan_window import TrainingPlanWindow
-            self._navigate_to(TrainingPlanWindow)
-        elif tab_key == "athlete_diary_specialist":
-            from ui.diary_window import DiaryWindow
-            self._navigate_to(DiaryWindow)
-        elif "medical" in tab_key:
-            from ui.medical_window import MedicalWindow
-            self._navigate_to(MedicalWindow)
 
-    def _navigate_to(self, window_class):
-        """Безопасно открывает окно специалиста, передавая ровно 1 аргумент"""
-        try:
-            # ❗ Эти окна ожидают только self + user_data (данные тренера/врача)
-            win = window_class(self.viewer_data)
-            win.show()
-            self.hide()  # Скрываем профиль, чтобы приложение не закрылось
-        except Exception as e:
-            import traceback
-            print(f"❌ Ошибка открытия {window_class.__name__}: {e}")
-            traceback.print_exc()
-            
-            from PyQt6.QtWidgets import QMessageBox
-            from PyQt6.QtGui import QFont
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Ошибка навигации")
-            msg.setText(f"Не удалось открыть окно:\n{e}")
-            msg.setFont(QFont("Alegreya", 18))
-            msg.exec()
+        elif tab_key == "athlete_training_coach":
+            from ui.athlete_training_coach import AthleteTrainingCoach
+            view = AthleteTrainingCoach(self.viewer_data, self.athlete_data, self.content_layout)
+            view.build()
+
+        elif tab_key == "athlete_training_doctor":
+            from ui.athlete_training_doctor import AthleteTrainingDoctor
+            view = AthleteTrainingDoctor(self.viewer_data, self.athlete_data, self.content_layout)
+            view.build()
+
+        elif tab_key == "athlete_diary_specialist":
+            from ui.athlete_diary_specialist import AthleteDiarySpecialist
+            view = AthleteDiarySpecialist(self.viewer_data, self.athlete_data, self.content_layout)
+            view.build()
+
+        elif tab_key == "athlete_medical_coach":
+            from ui.athlete_medical_coach import AthleteMedicalCoach
+            view = AthleteMedicalCoach(self.viewer_data, self.athlete_data, self.content_layout)
+            view.build()
+
+        elif tab_key == "athlete_medical_doctor":
+            from ui.athlete_medical_doctor import AthleteMedicalDoctor
+            view = AthleteMedicalDoctor(self.viewer_data, self.athlete_data, self.content_layout)
+            view.build()
 
     def _show_popup(self, title, text, icon, ok_text="ОК"):
         """Вспомогательный метод для единых попапов: Alegreya 20px + русские кнопки"""
