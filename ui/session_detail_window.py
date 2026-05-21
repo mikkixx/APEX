@@ -11,7 +11,7 @@ class SessionDetailWindow(QWidget):
         self.session = session
         self.athlete_id = athlete_id
         self.setWindowTitle("Подробнее о занятии")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(600, 450)
         self._build()
 
     def _build(self):
@@ -32,9 +32,9 @@ class SessionDetailWindow(QWidget):
 
         date_row = QHBoxLayout()
         date_lbl = QLabel("Дата:")
-        date_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
+        date_lbl.setStyleSheet("font-size: 28px; font-weight: bold;")
         date_val = QLabel(str(self.session.date))
-        date_val.setStyleSheet("font-size: 20px; color: #888;")
+        date_val.setStyleSheet("font-size: 28px; color: #888;")
         date_row.addStretch()
         date_row.addWidget(date_lbl)
         date_row.addSpacing(6)

@@ -10,12 +10,11 @@ from core.operations import get_training_plan, delete_training_plan
 class AthleteTrainingCoach:
     """Компонент плана для тренера. Работает внутри любого QWidget."""
     
-    # ✅ Принимает parent_widget для безопасного показа диалогов
     def __init__(self, specialist_data, athlete_data, layout, parent_widget=None):
         self.specialist_data = specialist_data
         self.athlete_data = athlete_data
         self.layout = layout
-        self.parent = parent_widget  # ✅ Безопасный родитель для QMessageBox/QDialog
+        self.parent = parent_widget
         self._start_date = None
         self._end_date = None
 
@@ -36,7 +35,7 @@ class AthleteTrainingCoach:
         header_row.addStretch()
 
         title = QLabel("ТРЕНИРОВОЧНЫЙ ПЛАН")
-        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px; border: none; background: transparent;")
         header_row.addWidget(title)
         header_row.addStretch()
 
@@ -74,7 +73,7 @@ class AthleteTrainingCoach:
         if not ok or not plans:
             empty = QLabel("Тренировочных планов не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px; margin-top: 40px;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin-top: 40px; background: transparent; border: none;")
             self.scroll_layout.addWidget(empty)
             return
 
@@ -87,7 +86,7 @@ class AthleteTrainingCoach:
             outer_layout.setSpacing(12)
 
             plan_title = QLabel(f"{plan.title} ({plan.start_date} — {plan.end_date})")
-            plan_title.setStyleSheet("font-size: 20px; font-weight: bold;")
+            plan_title.setStyleSheet("font-size: 28px; font-weight: bold; border: none; background: transparent;")
             plan_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
             outer_layout.addWidget(plan_title)
 
@@ -98,9 +97,9 @@ class AthleteTrainingCoach:
             add_session_btn = QPushButton("Добавить занятие")
             add_session_btn.setFixedHeight(50)
             add_session_btn.setStyleSheet("""
-                QPushButton { background: transparent; color: #1a1a1a; border: 1.5px solid #1a1a1a;
-                    border-radius: 20px; font-size: 20px; padding: 0px 20px; }
-                QPushButton:hover { background: #f0f0f0; }
+                QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
+                    font-size: 20px; font-weight: bold; padding: 0px 20px; }
+                QPushButton:hover { background: #333; }
             """)
             add_session_btn.clicked.connect(lambda _, pid=plan.id: self._add_session(pid))
 
@@ -140,15 +139,20 @@ class AthleteTrainingCoach:
         cl.addLayout(row("Тип занятия", session.activity_type))
         cl.addLayout(row("Длительность", f"{session.duration} мин"))
 
+        # ✅ Кнопки статуса и "Подробнее" теперь в одном ряду и одинакового размера
+        btn_row = QHBoxLayout()
+        
         status_badge = QPushButton(session.status.capitalize())
         status_badge.setEnabled(False)
+        # ✅ Стиль идентичен кнопке "Подробнее" (padding, font-size, border-radius)
         status_badge.setStyleSheet("""
             QPushButton { background: white; color: #1a1a1a; border: 1.5px solid #1a1a1a;
-                border-radius: 16px; padding: 6px 18px; font-size: 20px; }
+                border-radius: 20px; padding: 8px 24px; font-size: 20px; }
         """)
-        cl.addWidget(status_badge)
+        btn_row.addWidget(status_badge)
+        
+        btn_row.addSpacing(10)
 
-        btn_row = QHBoxLayout()
         detail_btn = QPushButton("Подробнее")
         detail_btn.setStyleSheet("""
             QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
@@ -164,13 +168,12 @@ class AthleteTrainingCoach:
     def _open_session(self, session):
         from ui.session_coach_window import SessionCoachWindow
         self.session_win = SessionCoachWindow(
-            self.specialist_data, self.athlete_data, session, on_close=self._refresh
+            self.specialist_data, self.athlete_data, session
         )
         self.session_win.show()
 
     def _new_plan(self):
         from ui.plan_add_window import PlanAddWindow
-        # ✅ Передаем parent для безопасного показа модалки
         self.new_plan_win = PlanAddWindow(
             athlete_id=self.athlete_data['id'],
             coach_id=self.specialist_data['id'],
@@ -180,34 +183,45 @@ class AthleteTrainingCoach:
         self.new_plan_win.show()
 
     def _add_session(self, plan_id):
-        from ui.add_session_window import AddSessionWindow
-        self.add_sess = AddSessionWindow(plan_id, self.specialist_data['id'], on_saved=self._refresh)
+        from ui.session_add_window import SessionAddWindow
+        self.add_sess = SessionAddWindow(plan_id, self.specialist_data['id'], on_saved=self._refresh)
         self.add_sess.show()
 
     def _delete_plan(self, plan_id):
-        # ✅ Используем self.parent вместо self
-        msg = QMessageBox(self.parent)
-        msg.setWindowTitle("Удалить план")
-        msg.setText("Удалить этот тренировочный план?")
-        msg.setIcon(QMessageBox.Icon.Question)
-        msg.setFont(QFont("Alegreya", 20))
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.button(QMessageBox.StandardButton.Yes).setText("Удалить")
-        msg.button(QMessageBox.StandardButton.No).setText("Отмена")
-        
-        if msg.exec() == QMessageBox.StandardButton.Yes:
-            ok, msg_text, _ = delete_training_plan(plan_id, self.specialist_data['id'])
+        confirm_msg = QMessageBox(self.parent)
+        confirm_msg.setWindowTitle("Подтверждение удаления")
+        confirm_msg.setText("Вы уверены, что хотите удалить этот тренировочный план?\nЭто действие нельзя отменить.")
+        confirm_msg.setIcon(QMessageBox.Icon.Question)
+        confirm_msg.setFont(QFont("Alegreya", 20))
+        confirm_msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        confirm_msg.button(QMessageBox.StandardButton.Yes).setText("Удалить")
+        confirm_msg.button(QMessageBox.StandardButton.No).setText("Отмена")
+
+        if confirm_msg.exec() == QMessageBox.StandardButton.Yes:
+            ok, msg_text, _ = delete_training_plan(self.specialist_data['id'], plan_id)
+
+            result_msg = QMessageBox(self.parent)
+            result_msg.setFont(QFont("Alegreya", 20))
+            result_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            result_msg.button(QMessageBox.StandardButton.Ok).setText("Хорошо")
+
             if ok:
+                result_msg.setWindowTitle("Успех")
+                result_msg.setText("Тренировочный план успешно удалён.")
+                result_msg.setIcon(QMessageBox.Icon.Information)
                 self._refresh()
             else:
-                QMessageBox.warning(self.parent, "Ошибка", msg_text)
+                result_msg.setWindowTitle("Ошибка")
+                result_msg.setText(msg_text)
+                result_msg.setIcon(QMessageBox.Icon.Warning)
+
+            result_msg.exec()
 
     def _show_range_picker(self):
-        # ✅ Используем self.parent
         dlg = QDialog(self.parent)
         dlg.setWindowTitle("Выбрать диапазон")
         dlg.setFixedSize(400, 180)
-        dlg.setFont(QFont("Alegreya", 18))
+        dlg.setFont(QFont("Alegreya", 20))
         v = QVBoxLayout(dlg)
         row = QHBoxLayout()
 
@@ -219,13 +233,13 @@ class AthleteTrainingCoach:
         end.setDate(QDate.currentDate())
 
         lbl_from = QLabel("С:")
-        lbl_from.setStyleSheet("font-size: 18px;")
+        lbl_from.setStyleSheet("font-size: 20px; background: transparent; border: none;")
         row.addWidget(lbl_from)
         row.addWidget(start)
         row.addSpacing(8)
 
         lbl_to = QLabel("По:")
-        lbl_to.setStyleSheet("font-size: 18px;")
+        lbl_to.setStyleSheet("font-size: 20px; background: transparent; border: none;")
         row.addWidget(lbl_to)
         row.addWidget(end)
         v.addLayout(row)

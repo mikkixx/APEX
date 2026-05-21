@@ -84,6 +84,7 @@ class DiaryDetailSpecialistWindow(QWidget):
         """)
         add_rec_btn.clicked.connect(self._add_recommendation)
         btn_wrap = QHBoxLayout()
+        btn_wrap.addStretch()
         btn_wrap.addWidget(add_rec_btn)
         btn_wrap.addStretch()
         layout.addLayout(btn_wrap)
@@ -143,9 +144,9 @@ class DiaryDetailSpecialistWindow(QWidget):
         cancel_btn = QPushButton("Отмена")
         cancel_btn.setFixedSize(130, 50)
         cancel_btn.setStyleSheet("""
-            QPushButton { background: #1a1a1a; color: white;
-                border-radius: 20px; font-size: 20px; font-weight: bold; }
-            QPushButton:hover { background: #333; }
+            QPushButton { background: transparent; color: #1a1a1a;
+                border: 1.5px solid #1a1a1a; border-radius: 20px; font-size: 20px; }
+            QPushButton:hover { background: #f0f0f0; }
         """)
 
         save_btn = QPushButton("Сохранить")
@@ -169,8 +170,6 @@ class DiaryDetailSpecialistWindow(QWidget):
                 from core.operations import add_diary_recommendation
                 ok, msg, _ = add_diary_recommendation(
                     self.viewer_data['id'],
-                    self.entry.athlete_id,
-                    'training_diary',
                     self.entry.id,
                     text
                 )

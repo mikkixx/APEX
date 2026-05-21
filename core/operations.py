@@ -843,7 +843,6 @@ def create_training_plan(specialist_id, athlete_id, start_date, end_date, title=
 def edit_session(specialist_id, session_id, date, time, activity_type, duration):
     if duration <= 0:
         return False, 'Длительность должна быть больше 0', None
-
     try:
         if db.is_closed():
             db.connect()
@@ -855,6 +854,11 @@ def edit_session(specialist_id, session_id, date, time, activity_type, duration)
 
         if session.status in ['выполнено', 'пропущено']:
             return False, 'Занятие выполнено. Редактирование невозможно', None
+
+        # ✅ ПРОВЕРКА ДАТЫ ПО РАМКАМ ПЛАНА
+        plan = TrainingPlan.get_by_id(session.plan_id)
+        if date < plan.start_date or date > plan.end_date:
+            return False, f'Дата должна быть в рамках плана ({plan.start_date} — {plan.end_date})', None
 
         with db.atomic():
             session.date = date
@@ -873,8 +877,8 @@ def delete_training_plan(specialist_id, plan_id):
     try:
         if db.is_closed():
             db.connect()
-
         plan = TrainingPlan.get_by_id(plan_id)
+        
         if plan.coach_id != specialist_id:
             return False, 'Доступ запрещён', None
 
@@ -902,7 +906,6 @@ def add_recommendation_to_session(specialist_id, session_id, text):
         return False, 'Текст рекомендации не может быть пустым', None
     if len(clean_text) > 500:
         return False, 'Текст не должен превышать 500 символов', None
-
     try:
         if db.is_closed():
             db.connect()
@@ -916,7 +919,7 @@ def add_recommendation_to_session(specialist_id, session_id, text):
         existing = Recommendation.select().where(
             (Recommendation.author == specialist_id) &
             (Recommendation.athlete == session.plan.athlete_id) &
-            (Recommendation.linked_entity == 'тренировочное занятие') &
+            (Recommendation.linked_entity == 'тренировочный план') &
             (Recommendation.linked_entity_id == session_id)
         ).first()
 
@@ -927,7 +930,7 @@ def add_recommendation_to_session(specialist_id, session_id, text):
             Recommendation.create(
                 author=specialist_id,
                 athlete=session.plan.athlete_id,
-                linked_entity_type='тренировочное занятие',
+                linked_entity='тренировочный план',  # ✅ ИСПРАВЛЕНО
                 linked_entity_id=session_id,
                 text=clean_text
             )
@@ -1181,7 +1184,6 @@ def add_diary_recommendation(specialist_id, entry_id, text):
         return False, 'Текст не может быть пустым', None
     if len(clean_text) > 500:
         return False, 'Текст не должен превышать 500 символов', None
-
     try:
         if db.is_closed():
             db.connect()
@@ -1199,7 +1201,7 @@ def add_diary_recommendation(specialist_id, entry_id, text):
             Recommendation.create(
                 author=specialist_id,
                 athlete=entry.athlete_id,
-                linked_entity_type='дневник нагрузок',
+                linked_entity='дневник нагрузок',  # ✅ ИСПРАВЛЕНО
                 linked_entity_id=entry_id,
                 text=clean_text
             )
@@ -1757,8 +1759,9 @@ def remove_athlete_from_list(specialist_id, athlete_id):
     
 def get_session_recommendations(session_id):
     try:
+        # ✅ ИСПРАВЛЕНО: теперь ищем по 'тренировочный план', как вы записываете в БД
         recommendations = Recommendation.select().where(
-            (Recommendation.linked_entity == 'тренировочное занятие') &
+            (Recommendation.linked_entity == 'тренировочный план') &
             (Recommendation.linked_entity_id == session_id)
         ).order_by(Recommendation.id.desc())
         

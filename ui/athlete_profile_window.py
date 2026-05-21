@@ -149,34 +149,47 @@ class AthleteProfileWindow(QMainWindow):
         self._main_layout.insertWidget(0, self.navbar)
         self._clear_content()
 
-        # Маршрутизация — всё рендерится ВНУТРИ content_layout этого окна
+        # Маршрутизация — всё рендерится ВНУТРИ content_layout этого окна.
+        # ВАЖНО: view сохраняется в self._current_view чтобы GC не уничтожил
+        # объект вместе со всеми его сигналами и слотами — иначе кнопки не работают.
         if tab_key == "profile":
+            self._current_view = None
             self._show_profile()
 
         elif tab_key == "athlete_training_coach":
             from ui.athlete_training_coach import AthleteTrainingCoach
-            view = AthleteTrainingCoach(self.viewer_data, self.athlete_data, self.content_layout)
-            view.build()
+            self._current_view = AthleteTrainingCoach(
+                self.viewer_data, self.athlete_data, self.content_layout, parent_widget=self
+            )
+            self._current_view.build()
 
         elif tab_key == "athlete_training_doctor":
             from ui.athlete_training_doctor import AthleteTrainingDoctor
-            view = AthleteTrainingDoctor(self.viewer_data, self.athlete_data, self.content_layout)
-            view.build()
+            self._current_view = AthleteTrainingDoctor(
+                self.viewer_data, self.athlete_data, self.content_layout
+            )
+            self._current_view.build()
 
         elif tab_key == "athlete_diary_specialist":
             from ui.athlete_diary_specialist import AthleteDiarySpecialist
-            view = AthleteDiarySpecialist(self.viewer_data, self.athlete_data, self.content_layout)
-            view.build()
+            self._current_view = AthleteDiarySpecialist(
+                self.viewer_data, self.athlete_data, self.content_layout
+            )
+            self._current_view.build()
 
         elif tab_key == "athlete_medical_coach":
             from ui.athlete_medical_coach import AthleteMedicalCoach
-            view = AthleteMedicalCoach(self.viewer_data, self.athlete_data, self.content_layout)
-            view.build()
+            self._current_view = AthleteMedicalCoach(
+                self.viewer_data, self.athlete_data, self.content_layout, parent_widget=self
+            )
+            self._current_view.build()
 
         elif tab_key == "athlete_medical_doctor":
             from ui.athlete_medical_doctor import AthleteMedicalDoctor
-            view = AthleteMedicalDoctor(self.viewer_data, self.athlete_data, self.content_layout)
-            view.build()
+            self._current_view = AthleteMedicalDoctor(
+                self.viewer_data, self.athlete_data, self.content_layout
+            )
+            self._current_view.build()
 
     def _show_popup(self, title, text, icon, ok_text="ОК"):
         """Вспомогательный метод для единых попапов: Alegreya 20px + русские кнопки"""

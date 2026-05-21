@@ -1,26 +1,28 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QLineEdit,
     QPushButton, QSpinBox, QDateEdit, QTimeEdit,
-    QMessageBox, QScrollArea, QComboBox
+    QMessageBox, QScrollArea
 )
 from PyQt6.QtCore import QDate, QTime
+from core.operations import add_session, edit_session
 
 
 class SessionAddWindow(QWidget):
-    def __init__(self, plan, session=None, on_saved=None):
+    # ✅ Исправленная сигнатура: четко разделяем plan_id (для создания) и session (для редактирования)
+    def __init__(self, plan_id, specialist_id, session=None, on_saved=None):
         super().__init__()
-        self.plan = plan
+        self.plan_id = plan_id
+        self.specialist_id = specialist_id
         self.session = session
         self.on_saved = on_saved
         self.setWindowTitle("Редактировать занятие" if session else "Добавить занятие")
-        self.setMinimumSize(480, 500)
+        self.setMinimumSize(520, 500)
         self._build()
 
     def _build(self):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
-        from PyQt6.QtWidgets import QScrollArea
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -28,22 +30,33 @@ class SessionAddWindow(QWidget):
 
         container = QWidget()
         scroll.setWidget(container)
+        
+        # ✅ Глобальный стиль: шрифт 20px для всех элементов
+        container.setStyleSheet("""
+            QLabel, QLineEdit, QDateEdit, QTimeEdit, QSpinBox, QPushButton {
+                font-size: 20px;
+            }
+        """)
+
         layout = QVBoxLayout(container)
         layout.setContentsMargins(48, 32, 48, 32)
         layout.setSpacing(12)
 
         title_lbl = QLabel("Редактировать занятие" if self.session else "Добавить занятие")
-        title_lbl.setStyleSheet("font-size: 32px; font-weight: bold;")
+        title_lbl.setStyleSheet("font-size: 28px; font-weight: bold;")
         layout.addWidget(title_lbl)
         layout.addSpacing(8)
 
+        # --- Тип занятия ---
         layout.addWidget(QLabel("Тип занятия:"))
         self.activity_input = QLineEdit()
+        self.activity_input.setPlaceholderText("Например: Бег, Силовая")
         self.activity_input.setFixedHeight(52)
         if self.session:
             self.activity_input.setText(self.session.activity_type)
         layout.addWidget(self.activity_input)
 
+        # --- Дата ---
         layout.addWidget(QLabel("Дата:"))
         self.date_edit = QDateEdit(calendarPopup=True)
         self.date_edit.setFixedHeight(52)
@@ -54,6 +67,7 @@ class SessionAddWindow(QWidget):
             self.date_edit.setDate(QDate.currentDate())
         layout.addWidget(self.date_edit)
 
+        # --- Время ---
         layout.addWidget(QLabel("Время (необязательно):"))
         self.time_edit = QTimeEdit()
         self.time_edit.setFixedHeight(52)
@@ -62,6 +76,7 @@ class SessionAddWindow(QWidget):
             self.time_edit.setTime(QTime(t.hour, t.minute))
         layout.addWidget(self.time_edit)
 
+        # --- Длительность ---
         layout.addWidget(QLabel("Длительность (мин):"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(1, 300)
@@ -70,14 +85,25 @@ class SessionAddWindow(QWidget):
             self.duration_spin.setValue(self.session.duration)
         layout.addWidget(self.duration_spin)
 
+        layout.addSpacing(20)
+
+        # --- Кнопка ---
         save_btn = QPushButton("Сохранить")
-        save_btn.setFixedHeight(52)
+        save_btn.setFixedHeight(56)
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background: #1a1a1a; 
+                color: white; 
+                border-radius: 20px; 
+                font-weight: bold;
+            }
+            QPushButton:hover { background: #333; }
+        """)
         save_btn.clicked.connect(self._save)
         layout.addWidget(save_btn)
         layout.addStretch()
 
     def _save(self):
-        from core.operations import add_session, edit_session
         activity = self.activity_input.text().strip()
         date = self.date_edit.date().toPyDate()
         time = self.time_edit.time().toPyTime()
@@ -87,10 +113,21 @@ class SessionAddWindow(QWidget):
             QMessageBox.warning(self, "Ошибка", "Введите тип занятия")
             return
 
+        # ✅ Используем правильные ID и аргументы
         if self.session:
-            ok, msg, _ = edit_session(self.session.id, activity, date, time, duration)
+            # Редактирование
+            ok, msg, _ = edit_session(
+                self.specialist_id, 
+                self.session.id, 
+                date, time, activity, duration
+            )
         else:
-            ok, msg, _ = add_session(self.plan.id, activity, date, time, duration)
+            # Создание
+            ok, msg, _ = add_session(
+                self.specialist_id, 
+                self.plan_id,  # ✅ Передаем plan_id, а не объект сессии
+                date, time, activity, duration
+            )
 
         if ok:
             if self.on_saved:
