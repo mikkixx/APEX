@@ -19,6 +19,7 @@ class ProfileWindow(BaseWindow):
         ok, msg, data = get_profile(self.user_data['id'])
         if ok:
             self.profile_data = data
+            self.user_data.update(data)
         else:
             self.profile_data = self.user_data
         self._build()
@@ -43,29 +44,25 @@ class ProfileWindow(BaseWindow):
         # Photo column
         photo_col = QVBoxLayout()
         photo_col.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        
+
         self.photo_label = QLabel()
-        self.photo_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.photo_label.setContentsMargins(0, 0, 0, 0)
-        # ✅ Серая граница + скругление 20px
+        self.photo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.photo_label.setStyleSheet("""
             QLabel { border: 1.5px solid #cccccc; border-radius: 20px; background: #eeeeee; }
         """)
-        self.photo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._load_photo()
         photo_col.addWidget(self.photo_label)
-
         card_layout.addLayout(photo_col)
 
-        # Fields
+        # Fields column
         fields_col = QVBoxLayout()
         fields_col.setSpacing(10)
 
         def field_row(label, value):
             frame = QFrame()
             frame.setStyleSheet("""
-                QFrame { border: 1.5px solid #e0e0e0; border-radius: 20px;
-                    background: #f5f5f5; }
+                QFrame { border: 1.5px solid #e0e0e0; border-radius: 20px; background: #f5f5f5; }
             """)
             fl = QHBoxLayout(frame)
             fl.setContentsMargins(16, 10, 16, 10)
@@ -91,10 +88,9 @@ class ProfileWindow(BaseWindow):
 
         fields_col.addStretch()
 
-        # Buttons
         btn_row = QHBoxLayout()
         btn_row.setAlignment(Qt.AlignmentFlag.AlignRight)
-        
+
         edit_btn = QPushButton("Редактировать")
         edit_btn.setFixedWidth(241)
         edit_btn.setStyleSheet("font-size: 20px;")
@@ -119,7 +115,6 @@ class ProfileWindow(BaseWindow):
         layout.addStretch()
 
     def _create_rounded_pixmap(self, pixmap, radius):
-        """Создает QPixmap с закругленными углами (QSS не обрезает картинки)"""
         if pixmap.isNull():
             return pixmap
         rounded = QPixmap(pixmap.size())
@@ -135,28 +130,48 @@ class ProfileWindow(BaseWindow):
 
     def _load_photo(self):
         path = self.profile_data.get('photo_path')
-        if path:
+
+        if path and path.strip():
             pix = QPixmap(path)
             if not pix.isNull():
-                # ✅ Масштабируем: высота максимум 400px, ширина подстраивается
+                # Масштабируем: высота строго 400px, ширина пропорционально
                 scaled = pix.scaled(
-                    2000, 400,
+                    16777215, 400,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
-                # ✅ Обрезаем углы на 20px
                 rounded = self._create_rounded_pixmap(scaled, 20)
+
                 self.photo_label.setPixmap(rounded)
-                # Лейбл автоматически сожмётся до размера картинки
+                # Ширина подстраивается под фото, высота фиксирована
+                self.photo_label.setFixedHeight(scaled.height())
+                self.photo_label.setMinimumWidth(scaled.width())
+                self.photo_label.setMaximumWidth(scaled.width())
+                self.photo_label.setSizePolicy(
+                    QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+                )
+                self.photo_label.setStyleSheet("""
+                    QLabel {
+                        border: 1.5px solid #cccccc;
+                        border-radius: 20px;
+                        background: #eeeeee;
+                    }
+                """)
                 return
-                
-        # ✅ Заглушка если фото нет
+
+        # Заглушка если фото нет
         self.photo_label.clear()
         self.photo_label.setText("Нет фото")
-        self.photo_label.setFixedSize(380, 380)
+        self.photo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.photo_label.setFixedSize(400, 400)
         self.photo_label.setStyleSheet("""
-            QLabel { border: 1.5px dashed #cccccc; border-radius: 20px;
-                background: #eeeeee; color: #aaa; font-size: 20px; }
+            QLabel {
+                border: 1.5px dashed #cccccc;
+                border-radius: 20px;
+                background: #eeeeee;
+                color: #aaa;
+                font-size: 20px;
+            }
         """)
 
     def _edit_profile(self):
@@ -169,7 +184,19 @@ class ProfileWindow(BaseWindow):
             item = self._content_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
         self._load_profile()
+        self.update()
+        self.repaint()
+
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
 
     def _delete_account(self):
         msg = QMessageBox(self)
@@ -177,9 +204,7 @@ class ProfileWindow(BaseWindow):
         msg.setText("Вы уверены, что хотите удалить аккаунт?\nЭто действие необратимо.")
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
         msg.setFont(QFont("Alegreya", 16))
-        
         msg.button(QMessageBox.StandardButton.Yes).setText("Удалить")
         msg.button(QMessageBox.StandardButton.No).setText("Отмена")
 

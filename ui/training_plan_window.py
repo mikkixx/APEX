@@ -144,7 +144,7 @@ class TrainingPlanWindow(BaseWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("Выбрать диапазон")
         dlg.setFixedSize(400, 180)
-        dlg.setFont(QFont("Alegreya", 20))
+        dlg.setFont("Alegreya", 20)
         v = QVBoxLayout(dlg)
         row = QHBoxLayout()
 

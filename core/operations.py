@@ -128,7 +128,9 @@ def get_profile(user_id):
     except Exception as e:
         return False, f"Ошибка в get_profile: {e}", None
                                                    
-def edit_profile(user_id, last_name, first_name, middle_name, email, specialization, photo_path=None):
+_PHOTO_UNSET = object()  # Sentinel: отличаем "не передано" от явного None
+
+def edit_profile(user_id, last_name, first_name, middle_name, email, specialization, photo_path=_PHOTO_UNSET):
     if not all([last_name, first_name, email, specialization]):
         return False, 'Заполните все обязательные поля', None
     if not _is_valid_email(email):
@@ -149,7 +151,10 @@ def edit_profile(user_id, last_name, first_name, middle_name, email, specializat
             user.middle_name = middle_name or None
             user.email = email
             user.specialization = specialization
-            if photo_path is not None:
+            # photo_path=None  → удалить фото (пишем NULL в БД)
+            # photo_path=str   → обновить путь
+            # photo_path не передан → не трогать поле
+            if photo_path is not _PHOTO_UNSET:
                 user.photo_path = photo_path
             user.save()
 

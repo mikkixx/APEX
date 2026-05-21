@@ -60,10 +60,9 @@ class EditProfileWindow(QWidget):
             email_db = self.user_data.get('email', '')  # Фоллбэк на сессионные данные
             
         self.email = field("Email:", email_db)
-        
         self.specialization = field("Направление:", d.get('specialization', ''))
 
-        # ✅ ПУТЬ К ФОТО: всегда кликабельный, открывает проводник
+        # ✅ ПУТЬ К ФОТО
         photo_lbl_title = QLabel("Путь к фото:")
         photo_lbl_title.setStyleSheet("font-size: 20px; font-weight: bold;")
         layout.addWidget(photo_lbl_title)
@@ -77,15 +76,32 @@ class EditProfileWindow(QWidget):
                      border: 2px solid #CFCFCF; border-radius: 20px; background: #f9f9f9; }
         """)
         
-        # ✅ Всегда меняем текст на путь или "отсутствует"
         self.photo_display.setText(self.photo_path if self.photo_path else "отсутствует")
-        
-        # ✅ Всегда делаем кликабельным (даже если путь отсутствует)
         self.photo_display.setCursor(Qt.CursorShape.PointingHandCursor)
         self.photo_display.mousePressEvent = lambda e: self._browse_photo()
         layout.addWidget(self.photo_display)
 
-        # ✅ ЗАГОЛОВОК ПАРОЛЯ: 24px, без отступов
+        # ✅ КНОПКА УДАЛЕНИЯ ФОТО (на всю ширину, появляется только если фото есть)
+        self.delete_photo_btn = QPushButton("Удалить фото")
+        self.delete_photo_btn.setFixedHeight(52)
+        self.delete_photo_btn.setStyleSheet("""
+            QPushButton {
+                background: #1a1a1a;
+                color: #ffffff;
+                border: 1.5px solid #1a1a1a;
+                border-radius: 20px;
+                font-size: 20px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background: transparent; color: #1a1a1a; }
+        """)
+        self.delete_photo_btn.clicked.connect(self._delete_photo)
+        layout.addWidget(self.delete_photo_btn)
+
+        # Изначально скрываем/показываем кнопку в зависимости от наличия пути
+        self._update_delete_btn_visibility()
+
+        # ✅ ЗАГОЛОВОК ПАРОЛЯ
         pw_header = QLabel("Изменить пароль")
         pw_header.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 0px; margin-left: 0px;")
         layout.addWidget(pw_header)
@@ -101,21 +117,42 @@ class EditProfileWindow(QWidget):
 
         save_btn = QPushButton("Сохранить изменения")
         save_btn.setFixedHeight(52)
-        save_btn.setStyleSheet("font-size: 20px; font-weight: bold;")
+        save_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
+                font-size: 20px; font-weight: bold; }
+            QPushButton:hover { background: #333; }
+        """)
         save_btn.clicked.connect(self._save)
         layout.addWidget(save_btn)
         layout.addStretch()
+
+    def _update_delete_btn_visibility(self):
+        """Показывает кнопку удаления только если путь к фото существует"""
+        if self.photo_path:
+            self.delete_photo_btn.show()
+        else:
+            self.delete_photo_btn.hide()
 
     def _browse_photo(self):
         path, _ = QFileDialog.getOpenFileName(self, "Выбрать фото", "", "Images (*.png *.jpg *.jpeg *.bmp)")
         if path:
             self.photo_path = path
             self.photo_display.setText(path)
-            # При успешном выборе меняем обводку на чёрную
             self.photo_display.setStyleSheet("""
                 QLabel { font-size: 20px; padding: 0 10px; color: #1a1a1a;
                          border: 2px solid black; border-radius: 20px; background: #f9f9f9; }
             """)
+            self._update_delete_btn_visibility()
+
+    def _delete_photo(self):
+        """Очищает путь к фото и возвращает интерфейс в исходное состояние"""
+        self.photo_path = None
+        self.photo_display.setText("отсутствует")
+        self.photo_display.setStyleSheet("""
+            QLabel { font-size: 20px; padding: 0 10px;
+                     border: 2px solid #CFCFCF; border-radius: 20px; background: #f9f9f9; }
+        """)
+        self._update_delete_btn_visibility()
 
     def _save(self):
         from core.operations import edit_profile, change_password
