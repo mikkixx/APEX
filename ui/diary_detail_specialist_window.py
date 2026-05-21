@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QScrollArea, QTextEdit, QMessageBox,
-    QDialog, QDialogButtonBox
+    QDialog
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 
 
 class DiaryDetailSpecialistWindow(QWidget):
@@ -15,7 +16,7 @@ class DiaryDetailSpecialistWindow(QWidget):
         self.viewer_data = viewer_data
         self.on_close = on_close
         self.setWindowTitle("Запись дневника")
-        self.setMinimumSize(660, 600)
+        self.setMinimumSize(660, 550)
         self._build()
 
     def closeEvent(self, event):
@@ -38,13 +39,13 @@ class DiaryDetailSpecialistWindow(QWidget):
         layout.setContentsMargins(52, 36, 52, 36)
         layout.setSpacing(10)
 
-        # Title
+        # Дата
         date_row = QHBoxLayout()
         date_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         d_lbl = QLabel("Дата:")
-        d_lbl.setStyleSheet("font-size: 32px; font-weight: bold;")
+        d_lbl.setStyleSheet("font-size: 24px; font-weight: bold; border: none;")
         d_val = QLabel(str(self.entry.date))
-        d_val.setStyleSheet("font-size: 32px; color: #888;")
+        d_val.setStyleSheet("font-size: 24px; color: #888; border: none;")
         date_row.addWidget(d_lbl)
         date_row.addSpacing(6)
         date_row.addWidget(d_val)
@@ -54,9 +55,9 @@ class DiaryDetailSpecialistWindow(QWidget):
         def info_row(label, value):
             row = QHBoxLayout()
             lbl = QLabel(f"{label}:")
-            lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
+            lbl.setStyleSheet("font-size: 20px; font-weight: bold; border: none; background: transparent;")
             val = QLabel(str(value))
-            val.setStyleSheet("font-size: 20px; color: #777;")
+            val.setStyleSheet("font-size: 20px; color: #777; border: none; background: transparent;")
             row.addWidget(lbl)
             row.addSpacing(6)
             row.addWidget(val)
@@ -72,20 +73,33 @@ class DiaryDetailSpecialistWindow(QWidget):
         layout.addLayout(info_row("Комментарий", self.entry.comment or "—"))
         layout.addSpacing(16)
 
-        # Add recommendation button
+        # Кнопка добавления рекомендации
         add_rec_btn = QPushButton("Добавить рекомендацию")
         add_rec_btn.setFixedHeight(52)
+        add_rec_btn.setFixedWidth(300)
+        add_rec_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
+                font-size: 20px; font-weight: bold; padding: 0px; }
+            QPushButton:hover { background: #333; }
+        """)
         add_rec_btn.clicked.connect(self._add_recommendation)
-        layout.addWidget(add_rec_btn)
+        btn_wrap = QHBoxLayout()
+        btn_wrap.addWidget(add_rec_btn)
+        btn_wrap.addStretch()
+        layout.addLayout(btn_wrap)
         layout.addSpacing(12)
 
-        # Existing recommendations
+        # Существующие рекомендации
         from core.operations import get_recommendations_for_entry
         ok, msg, recs = get_recommendations_for_entry(self.entry.id)
         if ok and recs:
             for rec in recs:
-                rec_title = QLabel(f"Рекомендации специалиста ({rec['author_fio']}, {rec['author_role']})")
-                rec_title.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 8px;")
+                rec_title = QLabel(
+                    f"Рекомендации специалиста ({rec['author_fio']}, {rec['author_role']})"
+                )
+                rec_title.setStyleSheet(
+                    "font-size: 20px; font-weight: bold; margin-top: 8px; border: none;"
+                )
                 rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
                 layout.addWidget(rec_title)
 
@@ -94,7 +108,7 @@ class DiaryDetailSpecialistWindow(QWidget):
                 rec_box.setReadOnly(True)
                 rec_box.setFixedHeight(90)
                 rec_box.setStyleSheet("""
-                    QTextEdit { border: 1px solid #e0e0e0; border-radius: 10px;
+                    QTextEdit { border: 1px solid #e0e0e0; border-radius: 20px;
                         background: #f9f9f9; padding: 8px; font-size: 20px; color: #444; }
                 """)
                 layout.addWidget(rec_box)
@@ -104,30 +118,65 @@ class DiaryDetailSpecialistWindow(QWidget):
     def _add_recommendation(self):
         dlg = QDialog(self)
         dlg.setWindowTitle("Добавить рекомендацию")
-        dlg.setFixedSize(500, 280)
+        dlg.setMinimumWidth(500)
+        dlg.setFont(QFont("Alegreya", 20))
+
         v = QVBoxLayout(dlg)
-        lbl = QLabel("Рекомендация:")
-        lbl.setStyleSheet("font-size: 20px;")
+        v.setContentsMargins(24, 20, 24, 24)
+        v.setSpacing(12)
+
+        lbl = QLabel("Текст рекомендации:")
+        lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         v.addWidget(lbl)
+
         te = QTextEdit()
         te.setFixedHeight(120)
+        te.setStyleSheet("""
+            QTextEdit { border: 1.5px solid #cccccc; border-radius: 20px;
+                padding: 8px 16px; font-size: 20px; background: #ffffff; }
+        """)
         v.addWidget(te)
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        v.addWidget(btns)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.setFixedSize(130, 50)
+        cancel_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white;
+                border-radius: 20px; font-size: 20px; font-weight: bold; }
+            QPushButton:hover { background: #333; }
+        """)
+
+        save_btn = QPushButton("Сохранить")
+        save_btn.setFixedSize(150, 50)
+        save_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white;
+                border-radius: 20px; font-size: 20px; font-weight: bold; }
+            QPushButton:hover { background: #333; }
+        """)
+
+        cancel_btn.clicked.connect(dlg.reject)
+        save_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addSpacing(10)
+        btn_row.addWidget(save_btn)
+        v.addLayout(btn_row)
+
         if dlg.exec():
             text = te.toPlainText().strip()
             if text:
-                from core.operations import add_recommendation
-                ok, msg, _ = add_recommendation(
+                from core.operations import add_diary_recommendation
+                ok, msg, _ = add_diary_recommendation(
                     self.viewer_data['id'],
                     self.entry.athlete_id,
                     'training_diary',
                     self.entry.id,
                     text
                 )
-                if not ok:
-                    QMessageBox.warning(self, "Ошибка", msg)
-                else:
+                if ok:
+                    if self.on_close:
+                        self.on_close()
                     self.close()
+                else:
+                    QMessageBox.warning(self, "Ошибка", msg)

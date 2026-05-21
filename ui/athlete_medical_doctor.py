@@ -2,9 +2,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QFrame, QComboBox,
     QTextEdit, QMessageBox, QDialog, QDialogButtonBox,
-    QLineEdit, QSpinBox, QDoubleSpinBox, QDateEdit, QCheckBox
+    QLineEdit, QDoubleSpinBox, QDateEdit, QCheckBox
 )
 from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtGui import QFont
 
 PER_PAGE = 1
 
@@ -22,47 +23,54 @@ class AthleteMedicalDoctor:
         layout = self.layout
 
         title = QLabel("МЕДИЦИНСКИЕ ПОКАЗАТЕЛИ")
-        title.setStyleSheet("font-size: 48px; font-weight: bold;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
         layout.addSpacing(12)
 
-        outer = QFrame()
-        outer.setStyleSheet("QFrame { border: 1px solid #e0e0e0; border-radius: 20px; background: #fafafa; }")
-        oc = QVBoxLayout(outer)
-        oc.setContentsMargins(24, 20, 24, 20)
-        oc.setSpacing(12)
+        # Filter panel — эталонный стиль из medical_window
+        filter_card = QFrame()
+        filter_card.setStyleSheet("""
+            QFrame { border: none; border-radius: 18px; background: #fafafa; }
+            QLabel, QDateEdit, QComboBox, QPushButton { font-size: 20px; }
+        """)
+        oc = QVBoxLayout(filter_card)
+        oc.setContentsMargins(20, 14, 20, 14)
+        oc.setSpacing(8)
 
-        # Filter
         filter_row = QHBoxLayout()
-        flbl = QLabel("Фильтрация  ⛉")
-        flbl.setStyleSheet("font-size: 20px; font-weight: bold;")
-        filter_row.addWidget(flbl)
+        filter_row.setSpacing(10)
+        filter_lbl = QLabel("Фильтрация")
+        filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
+        filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
-        lbl_d = QLabel("Дата ∨")
-        lbl_d.setStyleSheet("font-size: 20px;")
-        filter_row.addWidget(lbl_d)
-        filter_row.addSpacing(8)
 
         self.type_combo = QComboBox()
-        self.type_combo.setFixedHeight(48)
-        self.type_combo.addItems(["Тип осмотра", "общий", "кардиологический", "неврологический", "ортопедический"])
-        filter_row.addWidget(self.type_combo)
+        self.type_combo.setFixedWidth(240)
+        self.type_combo.addItem("Все типы")
+        self.type_combo.setEnabled(False)
 
         apply_btn = QPushButton("Применить")
-        apply_btn.setFixedHeight(48)
-        apply_btn.setFixedWidth(160)
+        apply_btn.setFixedWidth(150)
         apply_btn.clicked.connect(self._apply)
+        filter_row.addWidget(self.type_combo)
+        filter_row.addSpacing(10)
         filter_row.addWidget(apply_btn)
         oc.addLayout(filter_row)
 
-        # New exam button
+        # Кнопка нового осмотра
         new_exam_btn = QPushButton("Новый осмотр")
         new_exam_btn.setFixedHeight(48)
         new_exam_btn.setFixedWidth(200)
+        new_exam_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
+                font-size: 20px; font-weight: bold; padding: 0px; }
+            QPushButton:hover { background: #333; }
+        """)
         new_exam_btn.clicked.connect(self._new_exam)
         oc.addWidget(new_exam_btn)
 
+        # Scroll
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -73,6 +81,7 @@ class AthleteMedicalDoctor:
         self.scroll_area.setWidget(self.scroll_widget)
         oc.addWidget(self.scroll_area)
 
+        # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
@@ -90,12 +99,27 @@ class AthleteMedicalDoctor:
         page_row.addWidget(self.next_btn)
         oc.addLayout(page_row)
 
-        layout.addWidget(outer)
+        layout.addWidget(filter_card)
         self._refresh()
+
+    def _load_exam_types(self, exams):
+        self.type_combo.clear()
+        self.type_combo.addItem("Все типы")
+        if exams:
+            unique = sorted(set(
+                e.get('exam_type', '').strip() for e in exams
+                if e.get('exam_type') and e['exam_type'].strip()
+            ))
+            for t in unique:
+                self.type_combo.addItem(t)
+            self.type_combo.setEnabled(True)
+        else:
+            self.type_combo.addItem("Типы не найдены")
+            self.type_combo.setEnabled(False)
 
     def _apply(self):
         t = self.type_combo.currentText()
-        self.exam_type_filter = t if t != "Тип осмотра" else None
+        self.exam_type_filter = t if t not in ("Все типы", "Типы не найдены") else None
         self.page = 1
         self._refresh()
 
@@ -110,40 +134,42 @@ class AthleteMedicalDoctor:
 
         self._exams = exams or []
         total = len(self._exams)
-        total_pages = max(1, total)
 
         if not self._exams:
             empty = QLabel("Медосмотров не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
             self.scroll_layout.addWidget(empty)
+            self.type_combo.clear()
+            self.type_combo.addItem("Все типы")
         else:
-            idx = min(self.page - 1, len(self._exams) - 1)
+            self._load_exam_types(self._exams)
+            idx = min(self.page - 1, total - 1)
             self._render(self._exams[idx])
 
-        self.page_label.setText(f"{self.page} страница из {total_pages}")
+        self.page_label.setText(f"{self.page} страница из {max(1, total)}")
         self.prev_btn.setEnabled(self.page > 1)
-        self.next_btn.setEnabled(self.page < total_pages)
+        self.next_btn.setEnabled(self.page < total)
 
     def _render(self, exam):
         card = QFrame()
-        card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 16px; }")
+        card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 20px; }")
         cl = QVBoxLayout(card)
         cl.setContentsMargins(20, 16, 20, 16)
-        cl.setSpacing(8)
+        cl.setSpacing(6)
 
         title_lbl = QLabel(f"Медицинский осмотр ({exam['exam_date']})")
-        title_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
+        title_lbl.setStyleSheet("font-size: 22px; font-weight: bold; margin-bottom: 4px;")
         cl.addWidget(title_lbl)
 
         def row(label, value, critical=False):
             r = QHBoxLayout()
-            c = "#cc0000" if critical else "#1a1a1a"
-            vc = "#cc0000" if critical else "#777"
+            lbl_color = "#cc0000" if critical else "#1a1a1a"
+            val_color = "#cc0000" if critical else "#777"
             lbl = QLabel(f"{label}:")
-            lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {c};")
+            lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {lbl_color};")
             val = QLabel(str(value))
-            val.setStyleSheet(f"font-size: 20px; color: {vc};")
+            val.setStyleSheet(f"font-size: 20px; color: {val_color};")
             r.addWidget(lbl); r.addSpacing(4); r.addWidget(val); r.addStretch()
             return r
 
@@ -161,13 +187,16 @@ class AthleteMedicalDoctor:
                 display += " (критично)"
             cl.addLayout(row(m['type'], display, critical=m.get('is_critical', False)))
 
-        # Add recommendation button
         add_rec_btn = QPushButton("Добавить рекомендацию")
         add_rec_btn.setFixedHeight(48)
-        add_rec_btn.setFixedWidth(280)
+        add_rec_btn.setFixedWidth(300)
+        add_rec_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
+                font-size: 20px; font-weight: bold; padding: 0px; }
+            QPushButton:hover { background: #333; }
+        """)
         add_rec_btn.clicked.connect(lambda: self._add_rec(exam))
         cl.addWidget(add_rec_btn)
-
         self.scroll_layout.addWidget(card)
 
     def _new_exam(self):
@@ -180,17 +209,47 @@ class AthleteMedicalDoctor:
     def _add_rec(self, exam):
         dlg = QDialog()
         dlg.setWindowTitle("Добавить рекомендацию")
-        dlg.setFixedSize(520, 220)
+        dlg.setMinimumWidth(520)
+        dlg.setFont(QFont("Alegreya", 20))
         v = QVBoxLayout(dlg)
+        v.setContentsMargins(24, 20, 24, 24)
+        v.setSpacing(12)
+
         lbl = QLabel("Текст рекомендации:")
-        lbl.setStyleSheet("font-size: 20px;")
+        lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         v.addWidget(lbl)
+
         te = QTextEdit()
-        te.setFixedHeight(100)
+        te.setFixedHeight(120)
+        te.setStyleSheet("""
+            QTextEdit { border: 1.5px solid #cccccc; border-radius: 20px;
+                padding: 8px 16px; font-size: 20px; background: #ffffff; }
+        """)
         v.addWidget(te)
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject)
-        v.addWidget(btns)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.setFixedSize(140, 50)
+        cancel_btn.setStyleSheet("""
+            QPushButton { background: transparent; color: #1a1a1a;
+                border: 1.5px solid #1a1a1a; border-radius: 20px; font-size: 20px; }
+            QPushButton:hover { background: #f0f0f0; }
+        """)
+        ok_btn = QPushButton("Сохранить")
+        ok_btn.setFixedSize(140, 50)
+        ok_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white;
+                border-radius: 20px; font-size: 20px; font-weight: bold; }
+            QPushButton:hover { background: #333; }
+        """)
+        cancel_btn.clicked.connect(dlg.reject)
+        ok_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addSpacing(10)
+        btn_row.addWidget(ok_btn)
+        v.addLayout(btn_row)
+
         if dlg.exec():
             text = te.toPlainText().strip()
             if text:
@@ -200,10 +259,20 @@ class AthleteMedicalDoctor:
                     'exam', exam['exam_id'], text
                 )
                 if ok:
-                    QMessageBox.information(None, "Успех", "Рекомендация добавлена.")
+                    self._show_popup("Успех", "Рекомендация добавлена.")
                     self._refresh()
                 else:
-                    QMessageBox.warning(None, "Ошибка", msg)
+                    self._show_popup("Ошибка", msg, error=True)
+
+    def _show_popup(self, title, text, error=False):
+        msg = QMessageBox()
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setIcon(QMessageBox.Icon.Critical if error else QMessageBox.Icon.Information)
+        msg.setFont(QFont("Alegreya", 20))
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.button(QMessageBox.StandardButton.Ok).setText("Хорошо")
+        msg.exec()
 
     def _prev(self):
         if self.page > 1:

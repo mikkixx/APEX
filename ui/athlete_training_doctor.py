@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QWidget, QFrame, QDateEdit, QDialog, QDialogButtonBox
+    QScrollArea, QWidget, QFrame, QDateEdit, QDialog
 )
 from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtGui import QFont
 
 
 class AthleteTrainingDoctor:
@@ -20,12 +21,13 @@ class AthleteTrainingDoctor:
         header_row = QHBoxLayout()
         header_row.addStretch()
         title = QLabel("ТРЕНИРОВОЧНЫЙ ПЛАН")
-        title.setStyleSheet("font-size: 48px; font-weight: bold;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
         header_row.addWidget(title)
         header_row.addStretch()
+
         range_btn = QPushButton("Выбрать диапазон  ∨")
         range_btn.setFixedWidth(280)
-        range_btn.setFixedHeight(48)
+        range_btn.setFixedHeight(50)
         range_btn.clicked.connect(self._show_range)
         header_row.addWidget(range_btn)
         layout.addLayout(header_row)
@@ -73,7 +75,7 @@ class AthleteTrainingDoctor:
 
             for session in plan_info['sessions']:
                 card = QFrame()
-                card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 16px; }")
+                card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 20px; }")
                 cl = QVBoxLayout(card)
                 cl.setContentsMargins(20, 14, 20, 14)
                 cl.setSpacing(6)
@@ -81,25 +83,29 @@ class AthleteTrainingDoctor:
                 def row(lbl, val):
                     r = QHBoxLayout()
                     l = QLabel(f"{lbl}:")
-                    l.setStyleSheet("font-weight: bold; font-size: 20px;")
+                    l.setStyleSheet("font-weight: bold; font-size: 20px; background: transparent;")
                     v = QLabel(str(val))
-                    v.setStyleSheet("font-size: 20px; color: #777;")
+                    v.setStyleSheet("font-size: 20px; color: #777; background: transparent;")
                     r.addWidget(l); r.addSpacing(4); r.addWidget(v); r.addStretch()
                     return r
 
                 cl.addLayout(row("Тип занятия", session.activity_type))
                 cl.addLayout(row("Длительность", f"{session.duration} мин"))
 
-                status_btn = QPushButton(session.status.capitalize())
-                status_btn.setEnabled(False)
-                status_btn.setStyleSheet("""
+                status_badge = QPushButton(session.status.capitalize())
+                status_badge.setEnabled(False)
+                status_badge.setStyleSheet("""
                     QPushButton { background: white; color: #1a1a1a; border: 1.5px solid #1a1a1a;
                         border-radius: 16px; padding: 6px 18px; font-size: 20px; }
                 """)
-                cl.addWidget(status_btn)
+                cl.addWidget(status_badge)
 
                 detail_btn = QPushButton("Подробнее")
-                detail_btn.setStyleSheet("QPushButton { background: #1a1a1a; color: white; border-radius: 16px; padding: 8px 24px; font-size: 20px; }")
+                detail_btn.setStyleSheet("""
+                    QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
+                        padding: 8px 24px; font-size: 20px; }
+                    QPushButton:hover { background: #333; }
+                """)
                 br = QHBoxLayout()
                 br.addWidget(detail_btn); br.addStretch()
                 cl.addLayout(br)
@@ -109,23 +115,49 @@ class AthleteTrainingDoctor:
         self.scroll_layout.addStretch()
 
     def _show_range(self):
-        dlg = QDialog()
+        from PyQt6.QtWidgets import QDialogButtonBox
+        parent_widget = self.scroll_area.window()
+        dlg = QDialog(parent_widget)
         dlg.setWindowTitle("Выбрать диапазон")
-        dlg.setFixedSize(400, 160)
+        dlg.setFixedSize(420, 180)
+        dlg.setFont(QFont("Alegreya", 18))
+        dlg.setModal(True)
+
         v = QVBoxLayout(dlg)
+        v.setContentsMargins(20, 16, 20, 16)
+        v.setSpacing(12)
+
         row = QHBoxLayout()
-        start = QDateEdit(calendarPopup=True)
+        row.setSpacing(8)
+
+        lbl_from = QLabel("С:")
+        lbl_from.setStyleSheet("font-size: 20px;")
+        start = QDateEdit(dlg, calendarPopup=True)
         start.setDate(QDate.currentDate().addDays(-7))
-        start.setFixedHeight(48)
-        end = QDateEdit(calendarPopup=True)
+        start.setFixedSize(160, 52)
+
+        lbl_to = QLabel("По:")
+        lbl_to.setStyleSheet("font-size: 20px;")
+        end = QDateEdit(dlg, calendarPopup=True)
         end.setDate(QDate.currentDate())
-        end.setFixedHeight(48)
-        row.addWidget(QLabel("С:")); row.addWidget(start)
-        row.addSpacing(8); row.addWidget(QLabel("По:")); row.addWidget(end)
+        end.setFixedSize(160, 52)
+
+        row.addWidget(lbl_from)
+        row.addWidget(start)
+        row.addSpacing(12)
+        row.addWidget(lbl_to)
+        row.addWidget(end)
         v.addLayout(row)
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject)
+
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText("Применить")
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText("Отмена")
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
         v.addWidget(btns)
+
         if dlg.exec():
             self._start_date = start.date().toPyDate()
             self._end_date = end.date().toPyDate()

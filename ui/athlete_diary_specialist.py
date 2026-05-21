@@ -1,20 +1,19 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QFrame, QComboBox,
-    QDateEdit, QMessageBox, QTextEdit, QDialog,
-    QDialogButtonBox
+    QDateEdit, QMessageBox
 )
 from PyQt6.QtCore import Qt, QDate
+from core.operations import get_diary_entries, get_diary_filter_options
 
 PER_PAGE = 3
 
-
 class AthleteDiarySpecialist:
-    """Diary view for coach or doctor inside athlete profile."""
-    def __init__(self, specialist_data, athlete_data, layout):
+    def __init__(self, specialist_data, athlete_data, layout, parent_widget=None):
         self.specialist_data = specialist_data
         self.athlete_data = athlete_data
         self.layout = layout
+        self.parent = parent_widget
         self.page = 1
         self.start_date = None
         self.end_date = None
@@ -24,45 +23,50 @@ class AthleteDiarySpecialist:
         layout = self.layout
 
         title = QLabel("ДНЕВНИК НАГРУЗОК")
-        title.setStyleSheet("font-size: 48px; font-weight: bold;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
         layout.addSpacing(12)
 
         filter_card = QFrame()
-        filter_card.setStyleSheet("QFrame { border: 1px solid #e0e0e0; border-radius: 20px; background: #fafafa; }")
+        filter_card.setStyleSheet("""
+            QFrame { border: none; border-radius: 18px; background: #fafafa; }
+            QLabel, QDateEdit, QComboBox, QPushButton { font-size: 20px; }
+        """)
         fc = QVBoxLayout(filter_card)
-        fc.setContentsMargins(24, 16, 24, 16)
-        fc.setSpacing(12)
+        fc.setContentsMargins(20, 14, 20, 14)
+        fc.setSpacing(0)
 
         filter_row = QHBoxLayout()
-        flbl = QLabel("Фильтрация  ⛉")
-        flbl.setStyleSheet("font-size: 20px; font-weight: bold;")
-        filter_row.addWidget(flbl)
+        filter_row.setSpacing(10)
+        filter_lbl = QLabel("Фильтрация")
+        filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
+        filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
 
         filter_row.addWidget(QLabel("С:"))
         self.date_start = QDateEdit(calendarPopup=True)
-        self.date_start.setFixedHeight(48)
+        self.date_start.setFixedSize(160, 50)
         self.date_start.setDate(QDate.currentDate().addDays(-7))
         filter_row.addWidget(self.date_start)
-        filter_row.addSpacing(8)
+        filter_row.addSpacing(16)
+
         filter_row.addWidget(QLabel("По:"))
         self.date_end = QDateEdit(calendarPopup=True)
-        self.date_end.setFixedHeight(48)
+        self.date_end.setFixedSize(160, 50)
         self.date_end.setDate(QDate.currentDate())
-        filter_row.addWidget(self.date_end)
-        filter_row.addSpacing(8)
+        filter_row.addWidget(self.date_end) 
+        filter_row.addSpacing(10)
 
         self.act_combo = QComboBox()
-        self.act_combo.setFixedHeight(48)
-        self.act_combo.addItems(["Тип занятия", "бег", "велосипед", "плавание", "силовая", "растяжка", "другое"])
-        filter_row.addWidget(self.act_combo)
+        self.act_combo.setFixedWidth(240)
+        self.act_combo.addItem("Все типы")
+        self.act_combo.setEnabled(False)
 
         apply_btn = QPushButton("Применить")
-        apply_btn.setFixedHeight(48)
-        apply_btn.setFixedWidth(160)
+        apply_btn.setFixedWidth(150)
         apply_btn.clicked.connect(self._apply)
+        filter_row.addWidget(self.act_combo)
         filter_row.addWidget(apply_btn)
         fc.addLayout(filter_row)
 
@@ -76,6 +80,7 @@ class AthleteDiarySpecialist:
         self.scroll_area.setWidget(self.scroll_widget)
         fc.addWidget(self.scroll_area)
 
+        # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
@@ -94,18 +99,29 @@ class AthleteDiarySpecialist:
         fc.addLayout(page_row)
 
         layout.addWidget(filter_card)
+        
+        # ✅ Загружаем типы занятий перед рендером
+        self._load_activity_types()
         self._refresh()
+
+    def _load_activity_types(self):
+        ok, msg, types = get_diary_filter_options(self.athlete_data['id'])
+        if ok and types:
+            self.act_combo.clear()
+            self.act_combo.addItem("Все типы")
+            for t in types:
+                self.act_combo.addItem(t)
+            self.act_combo.setEnabled(True)
 
     def _apply(self):
         self.page = 1
         self.start_date = self.date_start.date().toPyDate()
         self.end_date = self.date_end.date().toPyDate()
         a = self.act_combo.currentText()
-        self.activity_filter = a if a != "Тип занятия" else None
+        self.activity_filter = a if a != "Все типы" else None
         self._refresh()
 
     def _refresh(self):
-        from core.operations import get_diary_entries
         ok, msg, data = get_diary_entries(
             self.athlete_data['id'],
             start_date=self.start_date,
@@ -127,23 +143,23 @@ class AthleteDiarySpecialist:
         if not entries:
             empty = QLabel("Записей не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
             self.scroll_layout.addWidget(empty)
+            self.page_label.setText("0 страниц")
         else:
             for entry in entries:
                 date_lbl = QLabel(f"Дата: <span style='color:#888'>{entry.date}</span>")
-                date_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
+                date_lbl.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 6px; background: transparent;")
                 self.scroll_layout.addWidget(date_lbl)
-                card = self._entry_card(entry)
-                self.scroll_layout.addWidget(card)
-
-        self.page_label.setText(f"{self.page} страница из {total_pages}")
-        self.prev_btn.setEnabled(self.page > 1)
-        self.next_btn.setEnabled(self.page < total_pages)
+                self.scroll_layout.addWidget(self._entry_card(entry))
+            
+            self.page_label.setText(f"{self.page} страница из {total_pages}")
+            self.prev_btn.setEnabled(self.page > 1)
+            self.next_btn.setEnabled(self.page < total_pages)
 
     def _entry_card(self, entry):
         card = QFrame()
-        card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 16px; }")
+        card.setStyleSheet("QFrame { background: white; border: 1px solid #e0e0e0; border-radius: 20px; }")
         cl = QVBoxLayout(card)
         cl.setContentsMargins(20, 14, 20, 14)
         cl.setSpacing(4)
@@ -151,9 +167,9 @@ class AthleteDiarySpecialist:
         def row(lbl, val):
             r = QHBoxLayout()
             l = QLabel(f"{lbl}:")
-            l.setStyleSheet("font-weight: bold; font-size: 20px;")
+            l.setStyleSheet("font-weight: bold; font-size: 20px; background: transparent; border: none;")
             v = QLabel(str(val))
-            v.setStyleSheet("font-size: 20px; color: #777;")
+            v.setStyleSheet("font-size: 20px; color: #777; background: transparent; border: none;")
             r.addWidget(l); r.addSpacing(4); r.addWidget(v); r.addStretch()
             return r
 
@@ -163,7 +179,11 @@ class AthleteDiarySpecialist:
         cl.addLayout(row("Качество сна", f"{entry.sleep_hours} ч"))
 
         detail_btn = QPushButton("Подробнее")
-        detail_btn.setStyleSheet("QPushButton { background: #1a1a1a; color: white; border-radius: 16px; padding: 8px 24px; font-size: 20px; }")
+        detail_btn.setStyleSheet("""
+            QPushButton { background: #1a1a1a; color: white; border-radius: 20px;
+                padding: 7px 18px; font-size: 20px; }
+            QPushButton:hover { background: #333; }
+        """)
         detail_btn.clicked.connect(lambda: self._open_detail(entry))
         br = QHBoxLayout()
         br.addWidget(detail_btn)
@@ -173,7 +193,11 @@ class AthleteDiarySpecialist:
 
     def _open_detail(self, entry):
         from ui.diary_detail_specialist_window import DiaryDetailSpecialistWindow
-        self.detail_win = DiaryDetailSpecialistWindow(self.specialist_data, self.athlete_data, entry, on_close=self._refresh)
+        self.detail_win = DiaryDetailSpecialistWindow(
+            entry=entry,
+            viewer_data=self.specialist_data,
+            on_close=self._refresh
+        )
         self.detail_win.show()
 
     def _prev(self):

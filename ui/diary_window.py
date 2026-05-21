@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate
 from ui.base_window import BaseWindow
+from core.operations import get_diary_entries, get_diary_filter_options
 
 PER_PAGE = 3
 
@@ -23,6 +24,10 @@ class DiaryEntryCard(QFrame):
                 border: 1px solid #e0e0e0; 
                 border-radius: 20px; 
             }
+            QFrame#DiaryEntryCard  QLabel {
+                border: none;
+                background: transparent;
+            }
         """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 14, 20, 14)
@@ -30,7 +35,7 @@ class DiaryEntryCard(QFrame):
 
         def row(lbl, val, gray=True):
             r = QHBoxLayout()
-            l = QLabel(f"{lbl}: ")
+            l = QLabel(f"{lbl}:  ")
             l.setStyleSheet("font-weight: bold; font-size: 20px; background: transparent;")
             v = QLabel(str(val))
             v.setStyleSheet(f"font-size: 20px; color: {'#777' if gray else '#1a1a1a'}; background: transparent;")
@@ -53,7 +58,7 @@ class DiaryEntryCard(QFrame):
                 color: white; 
                 border-radius: 20px;
                 padding: 7px 18px; 
-                font-size: 20px; 
+                font-size: 20px;  
             }
         """)
         detail_btn.clicked.connect(lambda: on_detail(self.entry))
@@ -61,10 +66,9 @@ class DiaryEntryCard(QFrame):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-
 class DiaryWindow(BaseWindow):
     active_tab = "diary"
-    
+
     def __init__(self, user_data):
         super().__init__(user_data)
         self.page = 1
@@ -76,7 +80,6 @@ class DiaryWindow(BaseWindow):
     def _load(self):
         layout = self._content_layout
 
-        # Header
         header_row = QHBoxLayout()
         add_btn = QPushButton("Добавить запись")
         add_btn.setFixedWidth(228)
@@ -84,7 +87,7 @@ class DiaryWindow(BaseWindow):
         header_row.addWidget(add_btn)
         header_row.addStretch()
         title = QLabel("ДНЕВНИК НАГРУЗОК")
-        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px; ")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;  ")
         header_row.addWidget(title)
         header_row.addStretch()
         layout.addLayout(header_row)
@@ -100,8 +103,9 @@ class DiaryWindow(BaseWindow):
         filter_layout_outer.setContentsMargins(20, 14, 20, 14)
 
         filter_row = QHBoxLayout()
+        filter_row.setSpacing(10)
         filter_lbl = QLabel("Фильтрация")
-        filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold; ")
+        filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
 
@@ -111,7 +115,7 @@ class DiaryWindow(BaseWindow):
         self.range_start.setDate(QDate.currentDate().addDays(-7))
         filter_row.addWidget(self.range_start)
 
-        filter_row.addSpacing(10)
+        filter_row.addSpacing(16)
 
         filter_row.addWidget(QLabel("По:"))
         self.range_end = QDateEdit(calendarPopup=True)
@@ -119,7 +123,7 @@ class DiaryWindow(BaseWindow):
         self.range_end.setDate(QDate.currentDate())
         filter_row.addWidget(self.range_end)
 
-        filter_row.addSpacing(10)
+        filter_row.addSpacing(16)
 
         self.activity_combo = QComboBox()
         self.activity_combo.setFixedWidth(240)
@@ -131,20 +135,18 @@ class DiaryWindow(BaseWindow):
         apply_btn.clicked.connect(self._apply_filter)
 
         filter_row.addWidget(self.activity_combo)
+        filter_row.addSpacing(10)
         filter_row.addWidget(apply_btn)
         filter_layout_outer.addLayout(filter_row)
 
-        # Entries scroll
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-
         self.scroll_widget = QWidget()
         self.scroll_layout = QVBoxLayout(self.scroll_widget)
         self.scroll_layout.setSpacing(10)
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll_area.setWidget(self.scroll_widget)
-
         filter_layout_outer.addWidget(self.scroll_area)
 
         # Pagination
@@ -155,7 +157,7 @@ class DiaryWindow(BaseWindow):
         self.prev_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 24px; padding: 0px; } QPushButton:hover { color: #555; }")
         self.prev_btn.clicked.connect(self._prev_page)
         self.page_label = QLabel("1 страница из 1")
-        self.page_label.setStyleSheet("font-size: 20px; ")
+        self.page_label.setStyleSheet("font-size: 20px;  ")
         self.next_btn = QPushButton("→")
         self.next_btn.setFixedSize(44, 44)
         self.next_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 24px; padding: 0px; } QPushButton:hover { color: #555; }")
@@ -167,25 +169,19 @@ class DiaryWindow(BaseWindow):
 
         layout.addWidget(filter_card)
 
-        # ✅ Сначала грузим данные, потом заполняем фильтры
+        # ✅ 1. Загружаем типы занятий из БД (независимо от фильтров)
+        self._load_activity_types()
+        # ✅ 2. Загружаем данные
         self._refresh()
 
-    def _load_activity_types_from_entries(self, entries):
-        """Заполняет комбобокс типами занятий из уже загруженных записей"""
-        self.activity_combo.clear()
-        self.activity_combo.addItem("Все типы")
-        
-        if entries:
-            unique_types = sorted(set(
-                e.activity_type.strip() for e in entries 
-                if e.activity_type and e.activity_type.strip()
-            ))
-            for t in unique_types:
+    def _load_activity_types(self):
+        ok, msg, types = get_diary_filter_options(self.user_data['id'])
+        if ok and types:
+            self.activity_combo.clear()
+            self.activity_combo.addItem("Все типы")
+            for t in types:
                 self.activity_combo.addItem(t)
             self.activity_combo.setEnabled(True)
-        else:
-            self.activity_combo.addItem("Типы не найдены")
-            self.activity_combo.setEnabled(False)
 
     def _apply_filter(self):
         self.page = 1
@@ -204,7 +200,6 @@ class DiaryWindow(BaseWindow):
         self.add_win.show()
 
     def _force_refresh(self):
-        """Полный сброс фильтров после добавления записи"""
         self.start_date = None
         self.end_date = None
         self.activity_filter = None
@@ -212,7 +207,6 @@ class DiaryWindow(BaseWindow):
         self._refresh()
 
     def _refresh(self):
-        from core.operations import get_diary_entries
         ok, msg, data = get_diary_entries(
             self.user_data['id'],
             start_date=self.start_date,
@@ -224,7 +218,7 @@ class DiaryWindow(BaseWindow):
 
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
-            if item.widget():
+            if item.widget(): 
                 item.widget().deleteLater()
 
         if not ok:
@@ -239,16 +233,11 @@ class DiaryWindow(BaseWindow):
         if not entries:
             empty = QLabel("Записей не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; ")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;  ")
             self.scroll_layout.addWidget(empty)
-            # ✅ Очищаем фильтры если нет данных
-            self.activity_combo.clear()
-            self.activity_combo.addItem("Все типы")
         else:
-            # ✅ Заполняем фильтры из реальных данных (без отдельного запроса)
-            self._load_activity_types_from_entries(entries)
             for entry in entries:
-                date_lbl = QLabel(f"Дата: <span style='color:#888'>{entry.date}</span>")
+                date_lbl = QLabel(f"Дата:  <span style='color:#888'>{entry.date}</span>")
                 date_lbl.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 6px; background: transparent;")
                 self.scroll_layout.addWidget(date_lbl)
                 card = DiaryEntryCard(entry, self._open_detail)

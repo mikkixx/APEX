@@ -1823,3 +1823,69 @@ def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_pa
     except Exception as e:
         print(f"Ошибка get_diary_entries: {e}")
         return False, str(e), {"entries": [], "total": 0}
+
+# Вставьте эти функции в конец файла core/operations.py
+
+def get_medical_filter_options(athlete_id):
+    """Получает уникальные типы осмотров для спортсмена"""
+    try:
+        if db.is_closed():
+            db.connect()
+        types = (MedicalExam
+                 .select(MedicalExam.exam_type)
+                 .where(MedicalExam.athlete_id == athlete_id)
+                 .distinct()
+                 .order_by(MedicalExam.exam_type.asc()))
+        # Фильтруем пустые значения
+        return True, 'Ok', [t.exam_type for t in types if t.exam_type]
+    except Exception as e:
+        return False, str(e), []
+
+def get_diary_filter_options(athlete_id):
+    """Получает уникальные типы занятий из дневника"""
+    try:
+        if db.is_closed():
+            db.connect()
+        types = (TrainingDiary
+                 .select(TrainingDiary.activity_type)
+                 .where((TrainingDiary.athlete_id == athlete_id) & (TrainingDiary.is_deleted == False))
+                 .distinct()
+                 .order_by(TrainingDiary.activity_type.asc()))
+        return True, 'Ok', [t.activity_type for t in types if t.activity_type]
+    except Exception as e:
+        return False, str(e), []
+
+def get_athlete_filter_options(specialist_id):
+    """Получает уникальные специализации и статусы для списка спортсменов тренера"""
+    try:
+        if db.is_closed():
+            db.connect()
+        
+        # Получаем ID всех спортсменов, привязанных к специалисту
+        athlete_ids = list(
+            SpecialistBinding.select(SpecialistBinding.athlete_id)
+            .where((SpecialistBinding.specialist_id == specialist_id) & (SpecialistBinding.is_deleted == False))
+            .tuples()
+        )
+        if not athlete_ids:
+            return True, 'Ok', {'specializations': [], 'statuses': []}
+        
+        athlete_ids = [id[0] for id in athlete_ids]
+
+        # 1. Уникальные специализации (направления)
+        specs = (User.select(User.specialization)
+                 .where((User.id << athlete_ids) & (User.specialization.is_null(False)))
+                 .distinct()
+                 .order_by(User.specialization.asc()))
+        spec_list = [s.specialization for s in specs if s.specialization]
+
+        # 2. Уникальные статусы готовности (из таблицы ReadinessStatus)
+        statuses = (ReadinessStatus.select(ReadinessStatus.current_status)
+                    .where(ReadinessStatus.athlete_id << athlete_ids)
+                    .distinct()
+                    .order_by(ReadinessStatus.current_status.asc()))
+        stat_list = [s.current_status for s in statuses if s.current_status]
+
+        return True, 'Ok', {'specializations': spec_list, 'statuses': stat_list}
+    except Exception as e:
+        return False, str(e), {'specializations': [], 'statuses': []}

@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate
 from ui.base_window import BaseWindow
+from core.operations import get_medical_data, get_medical_filter_options
 
 PER_PAGE = 1
 
@@ -37,6 +38,7 @@ class MedicalWindow(BaseWindow):
         filter_layout_outer.setContentsMargins(20, 14, 20, 14)
 
         filter_row = QHBoxLayout()
+        filter_row.setSpacing(10)
         filter_lbl = QLabel("Фильтрация")
         filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         filter_row.addWidget(filter_lbl)
@@ -48,19 +50,19 @@ class MedicalWindow(BaseWindow):
         self.date_filter.setDate(QDate.currentDate())
         self.exam_date = QDate.currentDate().toPyDate()
         filter_row.addWidget(self.date_filter)
-        filter_row.addSpacing(10)
+        filter_row.addSpacing(16)
 
-        # Combo Box for Exam Types
         self.type_combo = QComboBox()
         self.type_combo.setFixedWidth(240)
         self.type_combo.addItem("Все типы")
         self.type_combo.setEnabled(False)
-
+        
         apply_btn = QPushButton("Применить")
         apply_btn.setFixedWidth(150)
         apply_btn.clicked.connect(self._apply_filter)
 
         filter_row.addWidget(self.type_combo)
+        filter_row.addSpacing(10)
         filter_row.addWidget(apply_btn)
         filter_layout_outer.addLayout(filter_row)
 
@@ -83,7 +85,7 @@ class MedicalWindow(BaseWindow):
         self.prev_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 24px; padding: 0px; } QPushButton:hover { color: #555; }")
         self.prev_btn.clicked.connect(self._prev_page)
         self.page_label = QLabel("1 страница из 1")
-        self.page_label.setStyleSheet("font-size: 20px; ")
+        self.page_label.setStyleSheet("font-size: 20px;  ")
         self.next_btn = QPushButton("→")
         self.next_btn.setFixedSize(44, 44)
         self.next_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 24px; padding: 0px; } QPushButton:hover { color: #555; }")
@@ -95,37 +97,30 @@ class MedicalWindow(BaseWindow):
 
         layout.addWidget(filter_card)
 
-        # ✅ Сначала грузим данные, потом заполняем фильтры
+        # ✅ 1. Сначала грузим опции фильтров (независимо от данных)
+        self._load_exam_types()
+        # ✅ 2. Потом грузим данные
         self._refresh()
 
-    def _load_exam_types_from_exams(self, exams):
-        """Заполняет комбобокс типами осмотров из уже загруженных данных"""
-        self.type_combo.clear()
-        self.type_combo.addItem("Все типы")
-        
-        if exams:
-            unique_types = sorted(set(
-                e.get('exam_type', '').strip() for e in exams 
-                if e.get('exam_type') and e['exam_type'].strip()
-            ))
-            for t in unique_types:
+    def _load_exam_types(self):
+        """Загружает типы осмотров из БД один раз при старте"""
+        ok, msg, types = get_medical_filter_options(self.user_data['id'])
+        if ok and types:
+            self.type_combo.clear()
+            self.type_combo.addItem("Все типы")
+            for t in types:
                 self.type_combo.addItem(t)
             self.type_combo.setEnabled(True)
-        else:
-            self.type_combo.addItem("Типы не найдены")
-            self.type_combo.setEnabled(False)
 
     def _apply_filter(self):
         self.page = 1
         self.exam_date = self.date_filter.date().toPyDate()
         
         t = self.type_combo.currentText()
-        self.exam_type_filter = t if t not in ("Все типы", "Типы не найдены", "Загрузка...", "Ошибка загрузки") else None
+        self.exam_type_filter = t if t != "Все типы" else None
         self._refresh()
 
     def _refresh(self):
-        from core.operations import get_medical_data
-        
         ok, msg, exams = get_medical_data(
             self.user_data['id'], 
             exam_date=self.exam_date,
@@ -150,21 +145,14 @@ class MedicalWindow(BaseWindow):
             empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
             self.scroll_layout.addWidget(empty)
             self.page_label.setText("0 страниц")
-            # ✅ Очищаем фильтры если нет данных
-            self.type_combo.clear()
-            self.type_combo.addItem("Все типы")
-            return
+        else:
+            idx = min(self.page - 1, total - 1)
+            exam = self._all_exams[idx]
+            self._render_exam(exam)
 
-        # ✅ Заполняем фильтры из реальных данных (без отдельного запроса)
-        self._load_exam_types_from_exams(self._all_exams)
-
-        idx = min(self.page - 1, total - 1)
-        exam = self._all_exams[idx]
-        self._render_exam(exam)
-
-        self.page_label.setText(f"{self.page} страница из {total}")
-        self.prev_btn.setEnabled(self.page > 1)
-        self.next_btn.setEnabled(self.page < total)
+            self.page_label.setText(f"{self.page} страница из {total}")
+            self.prev_btn.setEnabled(self.page > 1)
+            self.next_btn.setEnabled(self.page < total)
 
     def _render_exam(self, exam):
         exam_card = QFrame()
@@ -182,9 +170,9 @@ class MedicalWindow(BaseWindow):
             lbl_color = "#cc0000" if critical else "#1a1a1a"
             val_color = "#cc0000" if critical else "#777"
             lbl = QLabel(f"{label}:")
-            lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {lbl_color};")
+            lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {lbl_color}; border: none; background: transparent;")
             val = QLabel(str(value))
-            val.setStyleSheet(f"font-size: 20px; color: {val_color};")
+            val.setStyleSheet(f"font-size: 20px; color: {val_color}; border: none; background: transparent;")
             r.addWidget(lbl); r.addSpacing(4); r.addWidget(val); r.addStretch()
             return r
 

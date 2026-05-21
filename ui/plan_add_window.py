@@ -1,11 +1,12 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QLineEdit,
-    QPushButton, QScrollArea, QDateEdit, QMessageBox
+    QPushButton, QDateEdit, QMessageBox
 )
 from PyQt6.QtCore import QDate
-
+from core.operations import create_training_plan
 
 class PlanAddWindow(QWidget):
+    # ✅ 1. ВАЖНО: должно быть __init__ (два подчеркивания)
     def __init__(self, athlete_id, coach_id, on_saved=None):
         super().__init__()
         self.athlete_id = athlete_id
@@ -49,17 +50,27 @@ class PlanAddWindow(QWidget):
         layout.addStretch()
 
     def _save(self):
-        from core.operations import create_training_plan
         title = self.title_input.text().strip()
         if not title:
             QMessageBox.warning(self, "Ошибка", "Введите название плана")
             return
+            
         start = self.start_date.date().toPyDate()
         end = self.end_date.date().toPyDate()
+        
         if end < start:
             QMessageBox.warning(self, "Ошибка", "Дата окончания раньше начала")
             return
-        ok, msg, _ = create_training_plan(self.athlete_id, self.coach_id, title, start, end)
+
+        # ✅ 2. ВАЖНО: Порядок аргументов строго как в operations.py
+        # (specialist_id, athlete_id, start_date, end_date, title)
+        ok, msg, _ = create_training_plan(
+            specialist_id=self.coach_id,
+            athlete_id=self.athlete_id,
+            start_date=start,
+            end_date=end,
+            title=title
+        )
         if ok:
             if self.on_saved:
                 self.on_saved()
