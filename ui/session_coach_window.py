@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSpinBox, QDateEdit, QTimeEdit, QLineEdit, QMessageBox, QScrollArea, QTextEdit, QDialog
 )
-from PyQt6.QtCore import QDate, QTime
+from PyQt6.QtCore import Qt 
 from PyQt6.QtGui import QFont
 from core.operations import edit_session, delete_session, add_recommendation_to_session, get_session_recommendations
 
@@ -45,12 +45,10 @@ class SessionCoachWindow(QWidget):
         self.stack_layout.setContentsMargins(48, 32, 48, 32)
         self.stack_layout.setSpacing(14)
 
-        # ── Режим просмотра ──────────────────────────────────────────
         self.view_widget = QWidget()
         self._build_view()
         self.stack_layout.addWidget(self.view_widget)
 
-        # ── Режим редактирования (скрыт по умолчанию) ─────────────────
         self.edit_widget = QWidget()
         self._build_edit()
         self.edit_widget.hide()
@@ -83,20 +81,18 @@ class SessionCoachWindow(QWidget):
         layout.addLayout(info_row("Длительность", f"{self._get('duration', 0)} мин"))
 
         status_val = self._get('status', 'запланировано')
-        status_lbl = QLabel(f"Статус: {status_val}")
-        status_lbl.setStyleSheet("""
-            QLabel { background: #1a1a1a; color: white; border-radius: 16px;
-                padding: 6px 18px; font-size: 20px; font-weight: bold; }
-        """)
-        layout.addWidget(status_lbl)
+        layout.addLayout(info_row("Статус", status_val.capitalize()))
         layout.addSpacing(16)
 
-        # ── Рекомендации ─────────────────────────────────────────────
         rec_title = QLabel("Рекомендации:")
         rec_title.setStyleSheet("font-size: 22px; font-weight: bold; border: none; background: transparent;")
         layout.addWidget(rec_title)
 
-        # ✅ Кнопка растягивается на всю ширину (как остальные)
+        self.recs_layout = QVBoxLayout()
+        self.recs_layout.setSpacing(10)
+        self._load_recommendations()
+        layout.addLayout(self.recs_layout)
+
         self.add_rec_btn = QPushButton("Добавить рекомендацию")
         self.add_rec_btn.setFixedHeight(52)
         self.add_rec_btn.setStyleSheet("""
@@ -106,20 +102,11 @@ class SessionCoachWindow(QWidget):
         self.add_rec_btn.clicked.connect(self._add_recommendation)
         layout.addWidget(self.add_rec_btn)
 
-        # Скрываем кнопку сразу, если статус не позволяет (точная проверка будет в _load_recommendations)
         if status_val != 'выполнено':
             self.add_rec_btn.hide()
 
-        layout.addSpacing(8)
-
-        # Список существующих рекомендаций
-        self.recs_layout = QVBoxLayout()
-        self.recs_layout.setSpacing(10)
-        self._load_recommendations()
-        layout.addLayout(self.recs_layout)
         layout.addSpacing(16)
 
-        # ── Кнопки действий ──────────────────────────────────────────
         btn_layout = QVBoxLayout()
         btn_layout.setSpacing(12)
 
@@ -237,7 +224,6 @@ class SessionCoachWindow(QWidget):
         else:
             QMessageBox.warning(self, "Ошибка", msg)
 
-    # ✅ Отдельное модальное окно для добавления рекомендации
     def _add_recommendation(self):
         dlg = QDialog(self)
         dlg.setWindowTitle("Добавить рекомендацию")
@@ -264,15 +250,15 @@ class SessionCoachWindow(QWidget):
         btn_row.addStretch()
 
         cancel_btn = QPushButton("Отмена")
-        cancel_btn.setFixedSize(130, 50)
+        cancel_btn.setFixedSize(140, 50)
         cancel_btn.setStyleSheet("""
-            QPushButton { background: transparent; color: #1a1a1a;
-                border: 1.5px solid #1a1a1a; border-radius: 20px; font-size: 20px; }
-            QPushButton:hover { background: #f0f0f0; }
+            QPushButton { background: #1a1a1a; color: white;
+                border-radius: 20px; font-size: 20px; font-weight: bold; }
+            QPushButton:hover { background: #333; }
         """)
 
         save_btn = QPushButton("Сохранить")
-        save_btn.setFixedSize(150, 50)
+        save_btn.setFixedSize(160, 50)
         save_btn.setStyleSheet("""
             QPushButton { background: #1a1a1a; color: white;
                 border-radius: 20px; font-size: 20px; font-weight: bold; }
@@ -295,7 +281,7 @@ class SessionCoachWindow(QWidget):
                     text
                 )
                 if ok:
-                    self._load_recommendations()  # ✅ Мгновенно обновляем список и скрываем кнопку
+                    self._load_recommendations()  
                 else:
                     QMessageBox.warning(self, "Ошибка", msg)
 
@@ -307,17 +293,20 @@ class SessionCoachWindow(QWidget):
         ok, msg, recs = get_session_recommendations(self._get('id'))
         has_recs = bool(recs)
 
+        if hasattr(self, 'add_rec_btn'):
+            self.add_rec_btn.setVisible(not has_recs and self._get('status') == 'выполнено')
+
         if has_recs:
             for r in recs:
                 box = QLabel(f"<b>{r['author_fio']} ({r['author_role']}):</b><br>{r['text']}")
-                # ✅ Шрифт увеличен до 20px
-                box.setStyleSheet("border: 1px solid #e0e0e0; border-radius: 12px; padding: 8px; background: #fafafa; font-size: 20px;")
+                box.setStyleSheet("border: 1px solid #e0e0e0; border-radius: 20px; padding: 8px; background: #fafafa; font-size: 20px;")
                 box.setWordWrap(True)
                 self.recs_layout.addWidget(box)
-        
-        # ✅ Показываем/скрываем кнопку: видна только если рекомендаций НЕТ и статус "выполнено"
-        if hasattr(self, 'add_rec_btn'):
-            self.add_rec_btn.setVisible(not has_recs and self._get('status') == 'выполнено')
+        else:
+            no_rec = QLabel("Рекомендаций нет.")
+            no_rec.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            no_rec.setStyleSheet("border: 1px solid #e0e0e0; border-radius: 12px; padding: 8px; background: #fafafa; font-size: 20px; color: #888;")
+            self.recs_layout.addWidget(no_rec)
 
     def _delete_session(self):
         msg = QMessageBox(self)

@@ -1,8 +1,7 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QComboBox, QFrame,
-    QMessageBox, QDateEdit, QDialog, QDialogButtonBox,
-    QSpinBox, QDoubleSpinBox, QTextEdit, QLineEdit
+    QMessageBox, QDateEdit
 )
 from PyQt6.QtCore import Qt, QDate
 from ui.base_window import BaseWindow
@@ -169,19 +168,25 @@ class DiaryWindow(BaseWindow):
 
         layout.addWidget(filter_card)
 
-        # ✅ 1. Загружаем типы занятий из БД (независимо от фильтров)
         self._load_activity_types()
-        # ✅ 2. Загружаем данные
         self._refresh()
 
     def _load_activity_types(self):
         ok, msg, types = get_diary_filter_options(self.user_data['id'])
         if ok and types:
+            # Сохраняем текущий выбор
+            current_selection = self.activity_combo.currentText()
+            
             self.activity_combo.clear()
             self.activity_combo.addItem("Все типы")
             for t in types:
                 self.activity_combo.addItem(t)
             self.activity_combo.setEnabled(True)
+            
+            # Восстанавливаем выбор, если он есть в новом списке
+            idx = self.activity_combo.findText(current_selection)
+            if idx >= 0:
+                self.activity_combo.setCurrentIndex(idx)
 
     def _apply_filter(self):
         self.page = 1
@@ -200,10 +205,12 @@ class DiaryWindow(BaseWindow):
         self.add_win.show()
 
     def _force_refresh(self):
+        QMessageBox.information(self, "Успех", "Запись успешно создана.")
         self.start_date = None
         self.end_date = None
         self.activity_filter = None
         self.page = 1
+        self._load_activity_types()  
         self._refresh()
 
     def _refresh(self):
@@ -233,7 +240,7 @@ class DiaryWindow(BaseWindow):
         if not entries:
             empty = QLabel("Записей не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;  ")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; background: transparent;")
             self.scroll_layout.addWidget(empty)
         else:
             for entry in entries:
@@ -258,5 +265,13 @@ class DiaryWindow(BaseWindow):
 
     def _open_detail(self, entry):
         from ui.diary_detail_window import DiaryDetailWindow
-        self.detail = DiaryDetailWindow(entry, self.user_data, on_close=self._refresh)
+        self.detail = DiaryDetailWindow(
+            entry, 
+            self.user_data, 
+            on_close=lambda: self._on_detail_closed()
+        )
         self.detail.show()
+    
+    def _on_detail_closed(self):
+        self._load_activity_types()  
+        self._refresh()              

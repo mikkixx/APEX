@@ -8,8 +8,6 @@ from PyQt6.QtGui import QFont
 from core.operations import get_training_plan, delete_training_plan
 
 class AthleteTrainingCoach:
-    """Компонент плана для тренера. Работает внутри любого QWidget."""
-    
     def __init__(self, specialist_data, athlete_data, layout, parent_widget=None):
         self.specialist_data = specialist_data
         self.athlete_data = athlete_data
@@ -139,12 +137,10 @@ class AthleteTrainingCoach:
         cl.addLayout(row("Тип занятия", session.activity_type))
         cl.addLayout(row("Длительность", f"{session.duration} мин"))
 
-        # ✅ Кнопки статуса и "Подробнее" теперь в одном ряду и одинакового размера
         btn_row = QHBoxLayout()
         
         status_badge = QPushButton(session.status.capitalize())
         status_badge.setEnabled(False)
-        # ✅ Стиль идентичен кнопке "Подробнее" (padding, font-size, border-radius)
         status_badge.setStyleSheet("""
             QPushButton { background: white; color: #1a1a1a; border: 1.5px solid #1a1a1a;
                 border-radius: 20px; padding: 8px 24px; font-size: 20px; }

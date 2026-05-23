@@ -8,7 +8,6 @@ from core.operations import add_session, edit_session
 
 
 class SessionAddWindow(QWidget):
-    # ✅ Исправленная сигнатура: четко разделяем plan_id (для создания) и session (для редактирования)
     def __init__(self, plan_id, specialist_id, session=None, on_saved=None):
         super().__init__()
         self.plan_id = plan_id
@@ -30,8 +29,7 @@ class SessionAddWindow(QWidget):
 
         container = QWidget()
         scroll.setWidget(container)
-        
-        # ✅ Глобальный стиль: шрифт 20px для всех элементов
+
         container.setStyleSheet("""
             QLabel, QLineEdit, QDateEdit, QTimeEdit, QSpinBox, QPushButton {
                 font-size: 20px;
@@ -47,7 +45,6 @@ class SessionAddWindow(QWidget):
         layout.addWidget(title_lbl)
         layout.addSpacing(8)
 
-        # --- Тип занятия ---
         layout.addWidget(QLabel("Тип занятия:"))
         self.activity_input = QLineEdit()
         self.activity_input.setPlaceholderText("Например: Бег, Силовая")
@@ -56,7 +53,6 @@ class SessionAddWindow(QWidget):
             self.activity_input.setText(self.session.activity_type)
         layout.addWidget(self.activity_input)
 
-        # --- Дата ---
         layout.addWidget(QLabel("Дата:"))
         self.date_edit = QDateEdit(calendarPopup=True)
         self.date_edit.setFixedHeight(52)
@@ -67,7 +63,6 @@ class SessionAddWindow(QWidget):
             self.date_edit.setDate(QDate.currentDate())
         layout.addWidget(self.date_edit)
 
-        # --- Время ---
         layout.addWidget(QLabel("Время (необязательно):"))
         self.time_edit = QTimeEdit()
         self.time_edit.setFixedHeight(52)
@@ -76,7 +71,6 @@ class SessionAddWindow(QWidget):
             self.time_edit.setTime(QTime(t.hour, t.minute))
         layout.addWidget(self.time_edit)
 
-        # --- Длительность ---
         layout.addWidget(QLabel("Длительность (мин):"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(1, 300)
@@ -87,7 +81,6 @@ class SessionAddWindow(QWidget):
 
         layout.addSpacing(20)
 
-        # --- Кнопка ---
         save_btn = QPushButton("Сохранить")
         save_btn.setFixedHeight(56)
         save_btn.setStyleSheet("""
@@ -113,19 +106,16 @@ class SessionAddWindow(QWidget):
             QMessageBox.warning(self, "Ошибка", "Введите тип занятия")
             return
 
-        # ✅ Используем правильные ID и аргументы
         if self.session:
-            # Редактирование
             ok, msg, _ = edit_session(
                 self.specialist_id, 
                 self.session.id, 
                 date, time, activity, duration
             )
         else:
-            # Создание
             ok, msg, _ = add_session(
                 self.specialist_id, 
-                self.plan_id,  # ✅ Передаем plan_id, а не объект сессии
+                self.plan_id,  
                 date, time, activity, duration
             )
 

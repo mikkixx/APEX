@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QWidget, QVBoxLayout, QLabel, QLineEdit,
     QPushButton, QScrollArea, QMessageBox, QFileDialog
 )
 from PyQt6.QtCore import Qt
@@ -53,16 +53,14 @@ class EditProfileWindow(QWidget):
         self.first_name = field("Имя:", d.get('first_name', ''))
         self.middle_name = field("Отчество:", d.get('middle_name', ''))
         
-        # ✅ EMAIL: Берем напрямую из БД, так как в profile_data его нет
         try:
             email_db = User.get_by_id(self.user_data['id']).email
         except Exception:
-            email_db = self.user_data.get('email', '')  # Фоллбэк на сессионные данные
+            email_db = self.user_data.get('email', '')  
             
         self.email = field("Email:", email_db)
         self.specialization = field("Направление:", d.get('specialization', ''))
 
-        # ✅ ПУТЬ К ФОТО
         photo_lbl_title = QLabel("Путь к фото:")
         photo_lbl_title.setStyleSheet("font-size: 20px; font-weight: bold;")
         layout.addWidget(photo_lbl_title)
@@ -81,7 +79,6 @@ class EditProfileWindow(QWidget):
         self.photo_display.mousePressEvent = lambda e: self._browse_photo()
         layout.addWidget(self.photo_display)
 
-        # ✅ КНОПКА УДАЛЕНИЯ ФОТО (на всю ширину, появляется только если фото есть)
         self.delete_photo_btn = QPushButton("Удалить фото")
         self.delete_photo_btn.setFixedHeight(52)
         self.delete_photo_btn.setStyleSheet("""
@@ -98,10 +95,8 @@ class EditProfileWindow(QWidget):
         self.delete_photo_btn.clicked.connect(self._delete_photo)
         layout.addWidget(self.delete_photo_btn)
 
-        # Изначально скрываем/показываем кнопку в зависимости от наличия пути
         self._update_delete_btn_visibility()
 
-        # ✅ ЗАГОЛОВОК ПАРОЛЯ
         pw_header = QLabel("Изменить пароль")
         pw_header.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 0px; margin-left: 0px;")
         layout.addWidget(pw_header)
@@ -127,7 +122,6 @@ class EditProfileWindow(QWidget):
         layout.addStretch()
 
     def _update_delete_btn_visibility(self):
-        """Показывает кнопку удаления только если путь к фото существует"""
         if self.photo_path:
             self.delete_photo_btn.show()
         else:
@@ -145,7 +139,6 @@ class EditProfileWindow(QWidget):
             self._update_delete_btn_visibility()
 
     def _delete_photo(self):
-        """Очищает путь к фото и возвращает интерфейс в исходное состояние"""
         self.photo_path = None
         self.photo_display.setText("отсутствует")
         self.photo_display.setStyleSheet("""
@@ -157,7 +150,6 @@ class EditProfileWindow(QWidget):
     def _save(self):
         from core.operations import edit_profile, change_password
 
-        # Если выбрано "отсутствует" или пустота, сохраняем None
         current_text = self.photo_display.text()
         photo_path = self.photo_path if current_text not in ("отсутствует", "") else None
 

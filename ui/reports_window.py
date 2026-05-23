@@ -43,14 +43,13 @@ class ReportsWindow(SpecialistBaseWindow):
         outer_layout.setContentsMargins(36, 28, 36, 28)
         outer_layout.setSpacing(16)
 
-        # ── Заголовок секции ─────────────────────────────────────────
         sec_title = QLabel("Параметры отчёта")
         sec_title.setStyleSheet("font-size: 28px; font-weight: bold; border: none; background: transparent;")
         sec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         outer_layout.addWidget(sec_title)
 
         FIELD_H    = 52
-        LBL_W      = 200   # фиксированная ширина подписи — поля выравниваются
+        LBL_W      = 200   
         LBL_STYLE  = "font-size: 20px; border: none; background: transparent;"
 
         INPUT_STYLE = """
@@ -110,14 +109,12 @@ class ReportsWindow(SpecialistBaseWindow):
             row.addWidget(widget)
             return row
 
-        # ── 1. Название отчёта ────────────────────────────────────────
         self.report_name = QLineEdit()
         self.report_name.setPlaceholderText("Например: Отчёт за июнь 2025")
         self.report_name.setFixedHeight(FIELD_H)
         self.report_name.setStyleSheet(INPUT_STYLE)
         outer_layout.addLayout(make_row("Название отчёта:", self.report_name))
 
-        # ── 2. Тип отчёта ─────────────────────────────────────────────
         self.type_combo = QComboBox()
         self.type_combo.setFixedHeight(FIELD_H)
         self.type_combo.setStyleSheet(COMBO_STYLE)
@@ -127,7 +124,6 @@ class ReportsWindow(SpecialistBaseWindow):
         self.type_combo.addItem("Дневник нагрузок", "diary")
         outer_layout.addLayout(make_row("Тип отчёта:", self.type_combo))
 
-          # 3. Спортсмен
         self.athlete_combo = QComboBox()
         self.athlete_combo.setFixedHeight(FIELD_H)
         self.athlete_combo.setStyleSheet(COMBO_STYLE)
@@ -135,7 +131,6 @@ class ReportsWindow(SpecialistBaseWindow):
         self._load_athletes()
         outer_layout.addLayout(make_row("Спортсмен:", self.athlete_combo))
 
-        # 4. Период
         period_row = QHBoxLayout()
         period_lbl = QLabel("Период:")
         period_lbl.setStyleSheet(LBL_STYLE)
@@ -165,7 +160,6 @@ class ReportsWindow(SpecialistBaseWindow):
         period_row.addWidget(self.end_date)
         outer_layout.addLayout(period_row)
 
-        # 5. Формат
         fmt_row = QHBoxLayout()
         fmt_lbl = QLabel("Формат:")
         fmt_lbl.setStyleSheet(LBL_STYLE)
@@ -188,7 +182,6 @@ class ReportsWindow(SpecialistBaseWindow):
         fmt_row.addStretch()
         outer_layout.addLayout(fmt_row)
 
-        # 6. Папка
         self.path_input = ClickableLineEdit(os.path.abspath("./reports"))
         self.path_input.setReadOnly(True)
         self.path_input.setFixedHeight(FIELD_H)
@@ -197,7 +190,6 @@ class ReportsWindow(SpecialistBaseWindow):
         self.path_input.clicked.connect(self._browse_path)
         outer_layout.addLayout(make_row("Сохранить в:", self.path_input))
 
-        # Кнопка
         outer_layout.addSpacing(8)
         gen_btn = QPushButton("Сформировать отчёт")
         gen_btn.setFixedHeight(54)

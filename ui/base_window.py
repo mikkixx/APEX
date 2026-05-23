@@ -1,5 +1,4 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QMessageBox
-from PyQt6.QtCore import Qt
 
 SPECIALIST_ROLES = ('тренер', 'врач', 'coach', 'doctor')
 
@@ -10,7 +9,6 @@ def _is_specialist(user_data):
 class BaseWindow(QMainWindow):
     active_tab = ""
 
-    # Вкладки спортсмена
     ATHLETE_TABS = [
         ("Тренировочный план", "training"),
         ("Дневник нагрузок",   "diary"),
@@ -19,7 +17,6 @@ class BaseWindow(QMainWindow):
         ("Чаты",               "chats"),
     ]
 
-    # Вкладки специалиста (тренер / врач)
     SPECIALIST_TABS = [
         ("Мои спортсмены", "athletes"),
         ("Отчеты",         "reports"),
@@ -30,7 +27,6 @@ class BaseWindow(QMainWindow):
     def __init__(self, user_data):
         super().__init__()
         self.user_data = user_data
-        # Выбираем набор вкладок по роли
         self.NAV_TABS = self.SPECIALIST_TABS if _is_specialist(user_data) else self.ATHLETE_TABS
         self.setMinimumSize(1200, 750)
         self.setWindowTitle("APEX")
@@ -61,7 +57,6 @@ class BaseWindow(QMainWindow):
         try:
             w = None
 
-            # ── Вкладки спортсмена ────────────────────────────────────
             if tab == "training":
                 from ui.training_plan_window import TrainingPlanWindow
                 w = TrainingPlanWindow(self.user_data)
@@ -72,7 +67,6 @@ class BaseWindow(QMainWindow):
                 from ui.medical_window import MedicalWindow
                 w = MedicalWindow(self.user_data)
 
-            # ── Вкладки специалиста ───────────────────────────────────
             elif tab == "athletes":
                 from ui.my_athletes_window import MyAthletesWindow
                 w = MyAthletesWindow(self.user_data)
@@ -80,7 +74,6 @@ class BaseWindow(QMainWindow):
                 from ui.reports_window import ReportsWindow
                 w = ReportsWindow(self.user_data)
 
-            # ── Общие вкладки ─────────────────────────────────────────
             elif tab == "profile":
                 from ui.profile_window import ProfileWindow
                 w = ProfileWindow(self.user_data)
@@ -91,15 +84,13 @@ class BaseWindow(QMainWindow):
             if w is None:
                 return
 
-            # Сначала показываем новое — потом закрываем текущее,
-            # чтобы Qt не видел момента «0 открытых окон».
             self._next_window = w
             w.show()
             self.close()
 
         except Exception as e:
             import traceback, sys
-            print(f"\n🔴 ОШИБКА при открытии вкладки '{tab}':")
+            print(f"\nОШИБКА при открытии вкладки '{tab}':")
             traceback.print_exc()
             sys.stderr.flush()
             QMessageBox.critical(self, "Ошибка", f"Не удалось открыть окно:\n{e}")
@@ -111,6 +102,5 @@ class BaseWindow(QMainWindow):
         self.close()
 
 
-# Оставляем для обратной совместимости — теперь просто алиас
 class SpecialistBaseWindow(BaseWindow):
     pass

@@ -1,12 +1,11 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QWidget, QFrame, QComboBox, QTextEdit
+    QScrollArea, QWidget, QFrame, QComboBox, QTextEdit, QDateEdit
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 from core.operations import get_medical_data, get_medical_filter_options
 
 class AthleteMedicalCoach:
-    """Coach view: read-only medical card for athlete."""
     def __init__(self, specialist_data, athlete_data, layout, parent_widget=None):
         self.specialist_data = specialist_data
         self.athlete_data = athlete_data
@@ -14,6 +13,7 @@ class AthleteMedicalCoach:
         self.parent = parent_widget
         self.page = 1
         self.exam_type_filter = None
+        self.exam_date = None  
 
     def build(self):
         layout = self.layout
@@ -39,6 +39,17 @@ class AthleteMedicalCoach:
         filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
+
+        date_lbl = QLabel("Дата:")
+        date_lbl.setStyleSheet("font-size: 20px; border: none; background: transparent;")
+        filter_row.addWidget(date_lbl)
+
+        self.date_filter = QDateEdit(calendarPopup=True)
+        self.date_filter.setFixedSize(160, 50)
+        self.date_filter.setDate(QDate.currentDate())
+        filter_row.addWidget(self.date_filter)
+
+        filter_row.addSpacing(16)
 
         self.type_combo = QComboBox()
         self.type_combo.setFixedWidth(240)
@@ -94,13 +105,19 @@ class AthleteMedicalCoach:
             self.type_combo.setEnabled(True)
 
     def _apply(self):
+        self.exam_date = self.date_filter.date().toPyDate()
+        
         t = self.type_combo.currentText()
         self.exam_type_filter = t if t != "Все типы" else None
         self.page = 1
         self._refresh()
 
     def _refresh(self):
-        ok, msg, exams = get_medical_data(self.athlete_data['id'], exam_type=self.exam_type_filter)
+        ok, msg, exams = get_medical_data(
+            self.athlete_data['id'], 
+            exam_date=self.exam_date,
+            exam_type=self.exam_type_filter
+        )
 
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
@@ -158,13 +175,15 @@ class AthleteMedicalCoach:
         cl.addWidget(mt)
 
         for m in exam.get('metrics', []):
+            ref = m.get('ref_range', '')
             display = f"{m['value']} {m['unit']}"
+            if ref and ref != '—':
+                display += f"  |  норма: {ref}"
             is_crit = bool(m.get('is_critical', False))
             if is_crit:
-                display += " (критично)"
+                display += "  ⚠ критично"
             cl.addLayout(row(m['type'], display, critical=is_crit))
 
-        # ✅ ЗАГОЛОВОК РЕКОМЕНДАЦИЙ (Всегда виден, 24px)
         rec_title = QLabel("Рекомендации врача")
         rec_title.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 10px; border: none; background: transparent;")
         rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -191,7 +210,6 @@ class AthleteMedicalCoach:
             """)
             cl.addWidget(rec_box)
         else:
-            # ✅ Та же рамка, белый фон, скругление 20px, текст слева
             no_rec_box = QLabel("Рекомендаций нет.")
             no_rec_box.setAlignment(Qt.AlignmentFlag.AlignLeft)
             no_rec_box.setStyleSheet("""

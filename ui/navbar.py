@@ -3,13 +3,11 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class NavBar(QWidget):
-    # ✅ Один универсальный сигнал: передает ключ вкладки (training, diary, athletes...)
     nav_requested = pyqtSignal(str)
     nav_logout = pyqtSignal()
 
     def __init__(self, tabs=None, active_tab=""):
         super().__init__()
-        # Если список не передан, используем дефолтный (спортсмен)
         self.tabs = tabs or [
             ("Тренировочный план", "training"),
             ("Дневник нагрузок",   "diary"),
@@ -30,7 +28,6 @@ class NavBar(QWidget):
         layout.setContentsMargins(24, 0, 24, 0)
         layout.setSpacing(0)
 
-        # Логотип
         logo_label = QLabel()
         logo_pix = QPixmap("img/logo.png")
         if not logo_pix.isNull():
@@ -43,7 +40,6 @@ class NavBar(QWidget):
 
         layout.addStretch(1)
 
-        # Контейнер для динамических вкладок
         tabs_widget = QWidget()
         tabs_layout = QHBoxLayout(tabs_widget)
         tabs_layout.setContentsMargins(0, 0, 0, 0)
@@ -65,7 +61,6 @@ class NavBar(QWidget):
                 }}
                 QPushButton:hover {{ color: #1a1a1a; }}
             """)
-            # ✅ При клике отправляем ключ вкладки в универсальный сигнал
             btn.clicked.connect(lambda checked, k=key: self.nav_requested.emit(k))
             tabs_layout.addWidget(btn)
 

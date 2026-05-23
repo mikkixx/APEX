@@ -9,8 +9,6 @@ from core.operations import add_diary_recommendation, get_recommendations_for_en
 
 
 class DiaryDetailSpecialistWindow(QWidget):
-    """Diary entry detail view for coach or doctor — read-only with add recommendation."""
-
     def __init__(self, entry, viewer_data, on_close=None):
         super().__init__()
         self.entry = entry
@@ -18,8 +16,7 @@ class DiaryDetailSpecialistWindow(QWidget):
         self.on_close = on_close
         self.setWindowTitle("Запись дневника")
         self.setMinimumSize(660, 550)
-        
-        # Кнопки будем хранить как атрибуты, чтобы управлять их видимостью
+
         self.btn_trainer = None
         self.btn_doctor = None
         
@@ -45,7 +42,6 @@ class DiaryDetailSpecialistWindow(QWidget):
         layout.setContentsMargins(52, 36, 52, 36)
         layout.setSpacing(10)
 
-        # Дата
         date_row = QHBoxLayout()
         date_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         d_lbl = QLabel("Дата:")
@@ -79,10 +75,7 @@ class DiaryDetailSpecialistWindow(QWidget):
         layout.addLayout(info_row("Комментарий", self.entry.comment or "Комментарий отсутствует"))
         layout.addSpacing(16)
 
-        # === Кнопки добавления рекомендаций (показываются в зависимости от роли) ===
         role = self.viewer_data.get('role', '')
-        
-        # Контейнер для кнопок
         btn_wrap = QHBoxLayout()
         btn_wrap.addStretch()
         btn_wrap.setSpacing(10)
@@ -114,18 +107,15 @@ class DiaryDetailSpecialistWindow(QWidget):
         layout.addLayout(btn_wrap)
         layout.addSpacing(12)
 
-        # === Список рекомендаций ===
         self.recs_layout = QVBoxLayout()
         self.recs_layout.setSpacing(12)
         layout.addLayout(self.recs_layout)
 
         layout.addStretch()
 
-        # Загружаем рекомендации и обновляем состояние кнопок
         self._refresh_recommendations()
 
     def _refresh_recommendations(self):
-        # Очищаем старые виджеты
         while self.recs_layout.count():
             item = self.recs_layout.takeAt(0)
             if item.widget():
@@ -138,7 +128,6 @@ class DiaryDetailSpecialistWindow(QWidget):
 
         if ok and recs:
             for rec in recs:
-                # Определяем роль автора из сохраненных данных (author_role)
                 author_role = rec.get('author_role', '')
                 if 'тренер' in author_role.lower():
                     has_trainer_rec = True
@@ -160,17 +149,13 @@ class DiaryDetailSpecialistWindow(QWidget):
                 """)
                 self.recs_layout.addWidget(rec_box)
 
-        # Управление видимостью кнопок
         if self.btn_trainer:
-            # Если рекомендация тренера уже есть — скрываем кнопку
             self.btn_trainer.setVisible(not has_trainer_rec)
             
         if self.btn_doctor:
-            # Если рекомендация врача уже есть — скрываем кнопку
             self.btn_doctor.setVisible(not has_doctor_rec)
 
     def _add_recommendation(self, role_type):
-        """role_type: 'тренер' или 'врач'"""
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Добавить рекомендацию ({role_type})")
         dlg.setMinimumWidth(500)

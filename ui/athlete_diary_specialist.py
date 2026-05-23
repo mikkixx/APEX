@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QFrame, QComboBox,
-    QDateEdit, QMessageBox
+    QDateEdit
 )
 from PyQt6.QtCore import Qt, QDate
 from core.operations import get_diary_entries, get_diary_filter_options
@@ -80,7 +80,6 @@ class AthleteDiarySpecialist:
         self.scroll_area.setWidget(self.scroll_widget)
         fc.addWidget(self.scroll_area)
 
-        # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
@@ -100,7 +99,6 @@ class AthleteDiarySpecialist:
 
         layout.addWidget(filter_card)
         
-        # ✅ Загружаем типы занятий перед рендером
         self._load_activity_types()
         self._refresh()
 
@@ -143,7 +141,7 @@ class AthleteDiarySpecialist:
         if not entries:
             empty = QLabel("Записей не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; background: transparent;")
             self.scroll_layout.addWidget(empty)
             self.page_label.setText("0 страниц")
         else:

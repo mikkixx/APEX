@@ -12,7 +12,7 @@ class DiaryAddWindow(QWidget):
         self.entry = entry
         self.on_saved = on_saved
         self.setWindowTitle("Редактировать запись" if entry else "Добавить запись")
-        self.setMinimumSize(520, 720)  # Чуть больше высоты для шрифта 20px
+        self.setMinimumSize(520, 720) 
         self._build()
 
     def _build(self):
@@ -27,7 +27,6 @@ class DiaryAddWindow(QWidget):
         container = QWidget()
         scroll.setWidget(container)
 
-        # ✅ Глобальный стиль: шрифт 20px везде + уменьшенные кнопки +/-
         container.setStyleSheet("""
             QLabel, QLineEdit, QDateEdit, QSpinBox, QDoubleSpinBox, QTextEdit, QPushButton {
                 font-size: 20px;
@@ -54,7 +53,6 @@ class DiaryAddWindow(QWidget):
             self.date_edit.setDate(QDate.currentDate())
         layout.addWidget(self.date_edit)
 
-        # ✅ Activity type: заменено на текстовое поле
         layout.addWidget(QLabel("Тип занятия:"))
         self.activity_input = QLineEdit()
         self.activity_input.setPlaceholderText("Введите тип занятия")
@@ -63,7 +61,6 @@ class DiaryAddWindow(QWidget):
             self.activity_input.setText(self.entry.activity_type)
         layout.addWidget(self.activity_input)
 
-        # Duration
         layout.addWidget(QLabel("Длительность (мин):"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(1, 300)
@@ -72,7 +69,6 @@ class DiaryAddWindow(QWidget):
             self.duration_spin.setValue(self.entry.duration)
         layout.addWidget(self.duration_spin)
 
-        # Steps
         layout.addWidget(QLabel("Количество шагов:"))
         self.steps_spin = QSpinBox()
         self.steps_spin.setRange(0, 100000)
@@ -81,7 +77,6 @@ class DiaryAddWindow(QWidget):
             self.steps_spin.setValue(self.entry.steps)
         layout.addWidget(self.steps_spin)
 
-        # Sleep
         layout.addWidget(QLabel("Количество часов сна:"))
         self.sleep_spin = QDoubleSpinBox()
         self.sleep_spin.setRange(0, 24)
@@ -91,7 +86,6 @@ class DiaryAddWindow(QWidget):
             self.sleep_spin.setValue(self.entry.sleep_hours)
         layout.addWidget(self.sleep_spin)
 
-        # Fatigue
         layout.addWidget(QLabel("Усталость (1–10):"))
         self.fatigue_spin = QSpinBox()
         self.fatigue_spin.setRange(1, 10)
@@ -100,7 +94,6 @@ class DiaryAddWindow(QWidget):
             self.fatigue_spin.setValue(self.entry.fatigue)
         layout.addWidget(self.fatigue_spin)
 
-        # Mood
         layout.addWidget(QLabel("Настроение (1–10):"))
         self.mood_spin = QSpinBox()
         self.mood_spin.setRange(1, 10)
@@ -109,7 +102,6 @@ class DiaryAddWindow(QWidget):
             self.mood_spin.setValue(self.entry.mood)
         layout.addWidget(self.mood_spin)
 
-        # Comment
         layout.addWidget(QLabel("Комментарий (необязательно):"))
         self.comment_edit = QTextEdit()
         self.comment_edit.setFixedHeight(110)
@@ -128,7 +120,7 @@ class DiaryAddWindow(QWidget):
     def _save(self):
         from core.operations import add_diary_entry, edit_diary_entry
         d = self.date_edit.date().toPyDate()
-        activity = self.activity_input.text().strip()  # ✅ Берём текст из поля
+        activity = self.activity_input.text().strip() 
         duration = self.duration_spin.value()
         steps = self.steps_spin.value()
         sleep = self.sleep_spin.value()

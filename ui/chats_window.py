@@ -1,10 +1,9 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QFrame, QTextEdit,
-    QLineEdit, QMessageBox, QListWidget, QListWidgetItem,
-    QSizePolicy, QDateEdit, QDialog
+    QLineEdit, QMessageBox, QListWidget, QListWidgetItem, QDateEdit, QDialog
 )
-from PyQt6.QtCore import Qt, QDate, QTimer, QSize
+from PyQt6.QtCore import Qt, QDate, QTimer
 from PyQt6.QtGui import QPixmap, QFont, QPainter, QPainterPath
 from ui.base_window import BaseWindow
 
@@ -53,7 +52,7 @@ class ChatsWindow(BaseWindow):
         main_row.setContentsMargins(0, 0, 0, 0)
         main_row.setSpacing(0)
 
-        # ── Левая панель ──────────────────────────────────────────────
+        # Левая панель
         left_panel = QFrame()
         left_panel.setFixedWidth(240)
         left_panel.setStyleSheet("""
@@ -108,14 +107,12 @@ class ChatsWindow(BaseWindow):
 
         main_row.addWidget(left_panel)
 
-        # ── Правая панель ─────────────────────────────────────────────
         self.right_panel = QFrame()
         self.right_panel.setStyleSheet("QFrame { border: none; background: transparent; }")
         right_layout = QVBoxLayout(self.right_panel)
         right_layout.setContentsMargins(20, 16, 20, 16)
         right_layout.setSpacing(10)
 
-        # Заголовок: аватар + ФИО (роль, направление)
         partner_info_row = QHBoxLayout()
         self.partner_avatar = QLabel()
         self.partner_avatar.setFixedSize(44, 44)
@@ -129,7 +126,6 @@ class ChatsWindow(BaseWindow):
         partner_info_row.addStretch()
         right_layout.addLayout(partner_info_row)
 
-        # ── Фильтры ───────────────────────────────────────────────────
         filter_card = QFrame()
         filter_card.setStyleSheet("""
             QFrame { border: none; border-radius: 20px; background: transparent; }
@@ -160,6 +156,7 @@ class ChatsWindow(BaseWindow):
         self.date_filter = QDateEdit(calendarPopup=True)
         self.date_filter.setFixedSize(160, 50)
         self.date_filter.setDate(QDate.currentDate().addDays(-30))
+        self.date_filter.calendarWidget().setStyleSheet("background-color: white;")
         filter_row.addWidget(self.date_filter)
 
         filter_row.addSpacing(8)
@@ -168,6 +165,7 @@ class ChatsWindow(BaseWindow):
         self.date_end = QDateEdit(calendarPopup=True)
         self.date_end.setFixedSize(160, 50)
         self.date_end.setDate(QDate.currentDate())
+        self.date_end.calendarWidget().setStyleSheet("background-color: white;")
         filter_row.addWidget(self.date_end)
 
         filter_row.addSpacing(8)
@@ -180,7 +178,6 @@ class ChatsWindow(BaseWindow):
         filter_layout.addLayout(filter_row)
         right_layout.addWidget(filter_card)
 
-        # ── Сообщения ─────────────────────────────────────────────────
         self.msg_scroll = QScrollArea()
         self.msg_scroll.setWidgetResizable(True)
         self.msg_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -191,7 +188,6 @@ class ChatsWindow(BaseWindow):
         self.msg_scroll.setWidget(self.msg_widget)
         right_layout.addWidget(self.msg_scroll)
 
-        # ── Отправка ──────────────────────────────────────────────────
         send_row = QHBoxLayout()
         self.msg_input = QTextEdit()
         self.msg_input.setPlaceholderText("Новое сообщение")
@@ -210,8 +206,6 @@ class ChatsWindow(BaseWindow):
 
         self._load_partners()
 
-    # ── Загрузка списка собеседников ──────────────────────────────────
-
     def _load_partners(self):
         from core.operations import get_chat_partners
         ok, msg, partners = get_chat_partners(self.user_data['id'])
@@ -223,8 +217,6 @@ class ChatsWindow(BaseWindow):
             item = QListWidgetItem(short)
             item.setData(Qt.ItemDataRole.UserRole, p)
             self.partner_list.addItem(item)
-
-    # ── Выбор собеседника ─────────────────────────────────────────────
 
     def _on_partner_selected(self, row):
         if row < 0 or row >= len(self.partners):
@@ -256,8 +248,6 @@ class ChatsWindow(BaseWindow):
             self.partner_avatar.setStyleSheet("border-radius: 22px; background: #cccccc;")
 
         self._reload_messages()
-
-    # ── Сообщения ─────────────────────────────────────────────────────
 
     def _reload_messages(self):
         if not self.current_partner:
@@ -329,8 +319,6 @@ class ChatsWindow(BaseWindow):
         container.setLayout(row)
         self.msg_layout.addWidget(container)
 
-    # ── Отправка ──────────────────────────────────────────────────────
-
     def _send_message(self):
         if not self.current_partner:
             self._show_popup("Ошибка", "Выберите собеседника", QMessageBox.Icon.Warning)
@@ -345,8 +333,6 @@ class ChatsWindow(BaseWindow):
             self._reload_messages()
         else:
             self._show_popup("Ошибка", msg, QMessageBox.Icon.Warning)
-
-    # ── Вспомогательные ───────────────────────────────────────────────
 
     def _show_popup(self, title, text, icon, ok_text="Хорошо"):
         msg = QMessageBox(self)
@@ -394,11 +380,11 @@ class ChatsWindow(BaseWindow):
         cancel_btn.setFixedSize(140, 50)
         cancel_btn.setStyleSheet("""
             QPushButton {
-                background: transparent; color: #1a1a1a;
-                border: 1.5px solid #1a1a1a; border-radius: 20px;
-                font-size: 20px; padding: 0px;
+                background: #1a1a1a; color: white;
+                border-radius: 20px; font-size: 20px;
+                font-weight: bold; padding: 0px;
             }
-            QPushButton:hover { background: #f0f0f0; }
+            QPushButton:hover { background: #333; }
         """)
 
         add_btn = QPushButton("Добавить")

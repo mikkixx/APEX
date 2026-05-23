@@ -23,7 +23,6 @@ class AthleteNavBar(QWidget):
         layout.setContentsMargins(28, 0, 28, 0)
         layout.setSpacing(0)
 
-        # 🔹 1. Логотип СЛЕВА
         logo_label = QLabel()
         pix = QPixmap("img/logo-profile.png")
         if not pix.isNull():
@@ -36,7 +35,6 @@ class AthleteNavBar(QWidget):
 
         layout.addStretch(1)
 
-        # 🔹 2. Контейнер для вкладок (будет по центру экрана)
         tabs_widget = QWidget()
         tabs_layout = QHBoxLayout(tabs_widget)
         tabs_layout.setContentsMargins(0, 0, 0, 0)
@@ -51,8 +49,7 @@ class AthleteNavBar(QWidget):
 
         for label, key in tabs:
             is_active = (key == self.active_tab)
-            
-            # ✅ Определяем целевой ключ окна в зависимости от роли
+
             if key == "training":
                 target_key = "athlete_training_coach" if self.viewer_role == 'тренер' else "athlete_training_doctor"
             elif key == "diary":
@@ -60,7 +57,7 @@ class AthleteNavBar(QWidget):
             elif key == "medical":
                 target_key = "athlete_medical_coach" if self.viewer_role == 'тренер' else "athlete_medical_doctor"
             else:
-                target_key = key  # profile остается без изменений
+                target_key = key  
 
             btn = QPushButton(label)
             btn.setFlat(True)
@@ -75,25 +72,24 @@ class AthleteNavBar(QWidget):
                 }}
                 QPushButton:hover {{ color: #1a1a1a; }}
             """)
-            # ✅ Передаем точный ключ окна (без проблем с замыканием)
             btn.clicked.connect(lambda checked, t=target_key: self.on_tab(t))
             tabs_layout.addWidget(btn)
 
         layout.addWidget(tabs_widget)
         layout.addStretch(1)
 
-        # 🔹 3. Балансировка (компенсирует ширину лого слева)
         spacer = QWidget()
         spacer.setFixedWidth(60)
         layout.addWidget(spacer)
 
 
 class AthleteProfileWindow(QMainWindow):
-    def __init__(self, viewer_data, athlete_data, on_unbound=None):
+    def __init__(self, viewer_data, athlete_data, on_unbound=None, on_status_changed=None):
         super().__init__()
         self.viewer_data = viewer_data
         self.athlete_data = athlete_data
-        self.on_unbound = on_unbound  # ✅ Сохраняем callback
+        self.on_unbound = on_unbound
+        self.on_status_changed = on_status_changed 
         self.current_tab = "profile"
         self.setMinimumSize(1200, 750)
         self.setWindowTitle("Профиль спортсмена")
@@ -130,9 +126,7 @@ class AthleteProfileWindow(QMainWindow):
                 self._clear_layout_recursive(item.layout())
 
     def _clear_content(self):
-        # ✅ Полная синхронная очистка вложенных виджетов и макетов
         self._clear_layout_recursive(self.content_layout)
-        # ✅ Принудительно обрабатываем события, чтобы виджеты удалились до отрисовки новых
         from PyQt6.QtWidgets import QApplication
         QApplication.processEvents()
 
@@ -154,8 +148,7 @@ class AthleteProfileWindow(QMainWindow):
             viewer_role=self.viewer_data.get('role', '')
         )
         self._main_layout.insertWidget(0, self.navbar)
-        
-        # ✅ Сначала полностью очищаем контент
+
         self._clear_content()
 
         # ✅ Создаем новый вид
@@ -209,7 +202,8 @@ class AthleteProfileWindow(QMainWindow):
 
     def _load_athlete_photo(self):
         path = self.athlete_data.get('photo_path')
-        if path:
+
+        if path and path.strip():
             pix = QPixmap(path)
             if not pix.isNull():
                 scaled = pix.scaled(
@@ -217,20 +211,41 @@ class AthleteProfileWindow(QMainWindow):
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
+
                 rounded = self._create_rounded_pixmap(scaled, 20)
                 self.photo_label.setPixmap(rounded)
+
+                self.photo_label.setFixedSize(-1, -1)
+                self.photo_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+                self.photo_label.setStyleSheet("""
+                    QLabel { 
+                        border: 1.5px solid #cccccc; 
+                        border-radius: 20px; 
+                        background: #eeeeee; 
+                    }
+                """)
                 return
+
         self.photo_label.clear()
         self.photo_label.setText("Нет фото")
+        self.photo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.photo_label.setFixedSize(400, 400)
+
         self.photo_label.setStyleSheet("""
-            QLabel { border: 1.5px dashed #cccccc; border-radius: 20px;
-                background: #eeeeee; color: #aaa; font-size: 20px; }
+            QLabel { 
+                border: 1.5px dashed #cccccc; 
+                border-radius: 20px; 
+                background: #eeeeee; 
+                color: #aaa; 
+                font-size: 20px; 
+            }
         """)
 
     def _show_profile(self):
         layout = self.content_layout
 
-        # ✅ РОЛЬ БЕРЁТСЯ НАПРЯМУЮ ИЗ БД ПРИ КАЖДОМ ОТКРЫТИИ ВКЛАДКИ
         from core.operations import get_profile
         ok, _, db_data = get_profile(self.athlete_data['id'])
         if ok:
@@ -309,7 +324,7 @@ class AthleteProfileWindow(QMainWindow):
         unbind_btn.clicked.connect(self._unbind_athlete)
         
         change_btn = QPushButton("Изменить статус спортсмена")
-        change_btn.setFixedWidth(412)
+        change_btn.setFixedWidth(350)
         change_btn.setStyleSheet("""
             QPushButton { 
                 background: #1a1a1a; color: white; 
@@ -347,12 +362,11 @@ class AthleteProfileWindow(QMainWindow):
             )
             if ok:
                 self._show_popup("Успех", "Спортсмен исключён из списка.", QMessageBox.Icon.Information)
-                
-                # ✅ Вызываем обновление списка в родительском окне
+
                 if self.on_unbound:
                     self.on_unbound()
                     
-                self.close()  # Закрываем профиль → видим обновлённый список
+                self.close()  
             else:
                 self._show_popup("Ошибка", msg_text, QMessageBox.Icon.Warning)
 
@@ -443,11 +457,13 @@ class AthleteProfileWindow(QMainWindow):
             )
             
             if ok:
-                # ✅ Всплывающее сообщение об успехе (Alegreya 20px + русская кнопка)
                 self._show_popup("Успех", "Статус спортсмена успешно обновлён.", QMessageBox.Icon.Information, "Хорошо")
                 
                 self.athlete_data['current_status'] = selected_status
                 self._clear_content()
                 self._show_profile()
+
+                if self.on_status_changed:
+                    self.on_status_changed()
             else:
                 self._show_popup("Ошибка", msg_text, QMessageBox.Icon.Warning, "Понятно")

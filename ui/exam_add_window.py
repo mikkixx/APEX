@@ -13,7 +13,7 @@ class ExamAddWindow(QWidget):
         self.on_saved = on_saved
         self.metric_rows = []
         self.setWindowTitle("Новый медицинский осмотр")
-        self.setMinimumSize(950, 700)
+        self.setMinimumSize(1000, 700)
         self._build()
 
     def _build(self):
@@ -60,7 +60,7 @@ class ExamAddWindow(QWidget):
         layout.addWidget(metrics_lbl)
         layout.addSpacing(4)
 
-        info_lbl = QLabel("💡 Норма вводится через дефис (например: 4.0-4.6). Значения вне диапазона подсветятся красным автоматически.")
+        info_lbl = QLabel("💡 Норма вводится через дефис (например: 4,0-4,6). Значения вне диапазона подсветятся красным автоматически.")
         info_lbl.setStyleSheet("font-size: 18px; color: #666; background: transparent; border: none;")
         info_lbl.setWordWrap(True)
         layout.addWidget(info_lbl)
@@ -115,19 +115,19 @@ class ExamAddWindow(QWidget):
         unit_inp.setFixedWidth(160)
 
         ref_inp = QLineEdit()
-        ref_inp.setPlaceholderText("Норма (4.0-4.6)")
+        ref_inp.setPlaceholderText("Норма (4,0-4,6)")
         ref_inp.setFixedHeight(48)
         ref_inp.setFixedWidth(200)
 
         del_btn = QPushButton("Удалить")
         del_btn.setFixedHeight(48)
+        del_btn.setFixedWidth(160)
         del_btn.setStyleSheet("""
             QPushButton { background: #1a1a1a; color: white; border-radius: 20px; font-weight: bold; }
-            QPushButton:hover { background: transparent; border: 1px solid #1a1a1a; color: #1a1a1a;}
+            QPushButton:hover { background: transparent; border: 1.5px solid #1a1a1a; color: #1a1a1a;}
         """)
         del_btn.clicked.connect(lambda: self._remove_metric_row(row_widget))
 
-        # ✅ Автоподсветка критичных значений
         val_inp.valueChanged.connect(lambda: self._check_critical(val_inp, ref_inp, name_inp))
         ref_inp.textChanged.connect(lambda: self._check_critical(val_inp, ref_inp, name_inp))
 
@@ -150,15 +150,13 @@ class ExamAddWindow(QWidget):
     def _check_critical(self, val_inp, ref_inp, name_inp):
         ref_text = ref_inp.text().strip().replace(',', '.')
         val = val_inp.value()
-        
-        # ✅ Стиль применяется к ВСЕМУ виджету (включая стрелочки), как просили
+
         if '-' in ref_text:
             try:
                 low_str, high_str = ref_text.split('-')
                 low, high = float(low_str), float(high_str)
                 if val < low or val > high:
                     name_inp.setStyleSheet("QLineEdit { color: #cc0000; font-weight: bold; }")
-                    # ✅ Красит всё поле целиком (текст + стрелки)
                     val_inp.setStyleSheet("color: #cc0000; font-weight: bold;") 
                 else:
                     name_inp.setStyleSheet("")
@@ -181,14 +179,25 @@ class ExamAddWindow(QWidget):
         for _, name_inp, val_inp, unit_inp, ref_inp in self.metric_rows:
             name = name_inp.text().strip()
             if not name: continue
-                
-            ref_text = ref_inp.text().strip()
+
+            ref_text = ref_inp.text().strip().replace(',', '.')
+            val = val_inp.value()
+            
+            is_crit = False
+            if '-' in ref_text:
+                try:
+                    low, high = map(float, ref_text.split('-'))
+                    if val < low or val > high:
+                        is_crit = True
+                except ValueError:
+                    pass
+
             metrics.append({
                 'metric_type': name,
-                'value': val_inp.value(),
+                'value': val,
                 'unit': unit_inp.text().strip() or '—',
                 'ref_range': ref_text if ref_text else '—',
-                'is_critical': False
+                'is_critical': is_crit
             })
 
         if not metrics:

@@ -41,7 +41,6 @@ class ProfileWindow(BaseWindow):
         card_layout.setContentsMargins(32, 32, 32, 32)
         card_layout.setSpacing(32)
 
-        # Photo column
         photo_col = QVBoxLayout()
         photo_col.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
@@ -55,7 +54,6 @@ class ProfileWindow(BaseWindow):
         photo_col.addWidget(self.photo_label)
         card_layout.addLayout(photo_col)
 
-        # Fields column
         fields_col = QVBoxLayout()
         fields_col.setSpacing(10)
 
@@ -68,7 +66,7 @@ class ProfileWindow(BaseWindow):
             fl.setContentsMargins(16, 10, 16, 10)
             lbl = QLabel(f"{label}:")
             lbl.setStyleSheet("font-weight: bold; font-size: 20px; border: none;")
-            val = QLabel(str(value) if value else "—")
+            val = QLabel(str(value) if value else "Отсутствует")
             val.setStyleSheet("font-size: 20px; color: #888; border: none;")
             fl.addWidget(lbl)
             fl.addSpacing(6)
@@ -134,7 +132,6 @@ class ProfileWindow(BaseWindow):
         if path and path.strip():
             pix = QPixmap(path)
             if not pix.isNull():
-                # Масштабируем: высота строго 400px, ширина пропорционально
                 scaled = pix.scaled(
                     16777215, 400,
                     Qt.AspectRatioMode.KeepAspectRatio,
@@ -143,7 +140,6 @@ class ProfileWindow(BaseWindow):
                 rounded = self._create_rounded_pixmap(scaled, 20)
 
                 self.photo_label.setPixmap(rounded)
-                # Ширина подстраивается под фото, высота фиксирована
                 self.photo_label.setFixedHeight(scaled.height())
                 self.photo_label.setMinimumWidth(scaled.width())
                 self.photo_label.setMaximumWidth(scaled.width())
@@ -159,7 +155,6 @@ class ProfileWindow(BaseWindow):
                 """)
                 return
 
-        # Заглушка если фото нет
         self.photo_label.clear()
         self.photo_label.setText("Нет фото")
         self.photo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

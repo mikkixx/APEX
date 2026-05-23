@@ -33,7 +33,6 @@ class RegisterWindow(QWidget):
         root.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         root.setSpacing(0)
 
-        # Logo
         logo = QLabel()
         pix = QPixmap("img/logo.png")
         if not pix.isNull():

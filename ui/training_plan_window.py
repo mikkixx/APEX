@@ -1,10 +1,13 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QWidget, QFrame, QDateEdit, QDialog, QDialogButtonBox
+    QScrollArea, QWidget, QFrame, QDateEdit, QDialog, QDialogButtonBox,
+    QComboBox, QMessageBox
 )
 from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtGui import QFont  
 from ui.base_window import BaseWindow
-from core.operations import get_training_plan
+from core.operations import get_training_plan, update_session_status, sync_overdue_sessions
+from datetime import date, timedelta
 
 class TrainingPlanWindow(BaseWindow):
     active_tab = "training"
@@ -54,6 +57,8 @@ class TrainingPlanWindow(BaseWindow):
         if start_date is not None:
             self._start_date = start_date
             self._end_date = end_date
+
+        sync_overdue_sessions(self.user_data['id'])
 
         ok, msg, plans = get_training_plan(self.user_data['id'], self._start_date, self._end_date)
 
@@ -107,21 +112,39 @@ class TrainingPlanWindow(BaseWindow):
         cl.addLayout(row("Тип занятия", session.activity_type))
         cl.addLayout(row("Длительность", f"{session.duration} мин"))
 
-        # ✅ Единый ряд для статуса и кнопки
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
-        # ✅ Статус: чёрная обводка, прозрачный фон, чёрный текст
-        status_badge = QPushButton(session.status.capitalize())
-        status_badge.setEnabled(False)
-        status_badge.setFixedHeight(46)
-        status_badge.setStyleSheet("""
-            QPushButton { background: transparent; color: #1a1a1a; border: 1.5px solid #1a1a1a;
-                border-radius: 20px; padding: 8px 24px; font-size: 20px; }
-        """)
-        btn_row.addWidget(status_badge)
+        status_combo = QComboBox()
+        status_combo.setFixedHeight(46)
+        status_combo.setFixedWidth(190)
+        status_combo.addItems(["запланировано", "выполнено", "пропущено"])
 
-        # ✅ Кнопка Подробнее: чёрный фон, белый текст, та же высота
+        current_status = (session.status or "").strip().lower()
+        if current_status not in ["запланировано", "выполнено", "пропущено"]:
+            current_status = "запланировано"
+        status_combo.setCurrentText(current_status)
+
+        status_combo.setStyleSheet("""
+            QComboBox { 
+                background: transparent; color: #1a1a1a; 
+                border: 1.5px solid #1a1a1a; border-radius: 20px; 
+                padding: 8px 16px; font-size: 20px; 
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox::down-arrow { image: none; border: none; }
+        """)
+
+        if current_status in ['выполнено', 'пропущено']:
+            status_combo.setEnabled(False)
+            status_combo.setToolTip("Изменение статуса недоступно для завершённых занятий")
+        else:
+            status_combo.currentTextChanged.connect(
+                lambda new_status, s=session, c=status_combo: self._update_status(s, new_status, c)
+            )
+        
+        btn_row.addWidget(status_combo)
+
         detail_btn = QPushButton("Подробнее")
         detail_btn.setFixedHeight(46)
         detail_btn.setStyleSheet("""
@@ -135,6 +158,35 @@ class TrainingPlanWindow(BaseWindow):
         cl.addLayout(btn_row)
         return card
 
+    def _update_status(self, session, new_status, combo_widget):
+        new_status = new_status.strip().lower()
+        old_status = (session.status or "").strip().lower()
+
+        if old_status in ['выполнено', 'пропущено']:
+            QMessageBox.warning(self, "Ошибка", "Нельзя изменить статус завершённого занятия.")
+            combo_widget.blockSignals(True)
+            combo_widget.setCurrentText(old_status)
+            combo_widget.blockSignals(False)
+            return
+
+        if new_status == old_status:
+            return
+        
+        ok, msg, _ = update_session_status(
+            session.id, 
+            self.user_data['id'], 
+            new_status
+        )
+        
+        if ok:
+            session.status = new_status
+            self._refresh_plans()
+        else:
+            QMessageBox.warning(self, "Ошибка", msg)
+            combo_widget.blockSignals(True)
+            combo_widget.setCurrentText(old_status)
+            combo_widget.blockSignals(False)
+
     def _open_detail(self, session):
         from ui.session_detail_window import SessionDetailWindow
         self.detail_win = SessionDetailWindow(session, self.user_data['id'])
@@ -144,7 +196,7 @@ class TrainingPlanWindow(BaseWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("Выбрать диапазон")
         dlg.setFixedSize(400, 180)
-        dlg.setFont("Alegreya", 20)
+        dlg.setFont(QFont("Alegreya", 20))
         v = QVBoxLayout(dlg)
         row = QHBoxLayout()
 
@@ -174,5 +226,5 @@ class TrainingPlanWindow(BaseWindow):
         btns.rejected.connect(dlg.reject)
         v.addWidget(btns)
 
-        if dlg.exec():
+        if dlg.exec() == QDialog.DialogCode.Accepted:
             self._refresh_plans(start.date().toPyDate(), end.date().toPyDate())

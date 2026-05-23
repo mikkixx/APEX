@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QScrollArea, QFrame, QTextEdit
+    QScrollArea, QTextEdit
 )
 from PyQt6.QtCore import Qt
 
@@ -64,7 +64,6 @@ class SessionDetailWindow(QWidget):
         layout.addLayout(info_row("Статус", self.session.status))
         layout.addSpacing(20)
 
-        # Recommendations
         from core.operations import get_session_recommendations
         ok, msg, recs = get_session_recommendations(self.session.id)
 

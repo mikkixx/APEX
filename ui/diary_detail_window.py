@@ -36,7 +36,6 @@ class DiaryDetailWindow(QWidget):
         layout.setContentsMargins(52, 36, 52, 36)
         layout.setSpacing(10)
 
-        # Date title
         date_row = QHBoxLayout()
         date_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         d_lbl = QLabel("Дата:")
@@ -70,7 +69,6 @@ class DiaryDetailWindow(QWidget):
         layout.addLayout(info_row("Комментарий", self.entry.comment or "Комментарий отсутствует"))
         layout.addSpacing(16)
 
-        # Athlete can edit/delete their own entries
         if self.user_data['role'] == 'спортсмен':
             btn_row = QHBoxLayout()
             edit_btn = QPushButton("Редактировать")
@@ -87,7 +85,6 @@ class DiaryDetailWindow(QWidget):
             layout.addLayout(btn_row)
             layout.addSpacing(16)
 
-        # Specialist recommendations
         from core.operations import get_recommendations_for_entry
         ok, msg, recs = get_recommendations_for_entry(self.entry.id)
 

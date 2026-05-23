@@ -78,7 +78,6 @@ class MyAthletesWindow(SpecialistBaseWindow):
         outer_layout.setContentsMargins(24, 20, 24, 20)
         outer_layout.setSpacing(12)
 
-        # Filter row
         filter_row = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск")
@@ -105,14 +104,12 @@ class MyAthletesWindow(SpecialistBaseWindow):
         filter_row.addWidget(apply_btn)
         outer_layout.addLayout(filter_row)
 
-        # Add athlete button
         add_btn = QPushButton("Добавить спортсмена")
         add_btn.setFixedWidth(280)
         add_btn.setFixedHeight(52)
         add_btn.clicked.connect(self._add_athlete)
         outer_layout.addWidget(add_btn)
 
-        # Header
         header = QHBoxLayout()
         for text, stretch in [("Фамилия", 2), ("Имя", 2), ("Отчество", 2), ("Направление", 2), ("Статус", 1)]:
             lbl = QLabel(text)
@@ -131,7 +128,6 @@ class MyAthletesWindow(SpecialistBaseWindow):
         self.scroll_area.setWidget(self.scroll_widget)
         outer_layout.addWidget(self.scroll_area)
 
-        # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
@@ -151,23 +147,18 @@ class MyAthletesWindow(SpecialistBaseWindow):
 
         layout.addWidget(outer)
 
-        # ✅ 1. Загружаем опции фильтров из БД
         self._load_filter_options()
-        # ✅ 2. Загружаем данные
         self._refresh()
 
     def _load_filter_options(self):
-        """Загружает направления и статусы из БД (независимо от поиска)"""
         ok, msg, options = get_athlete_filter_options(self.user_data['id'])
         if ok:
-            # Заполняем направления (specialization)
             specs = options.get('specializations', [])
             self.direction_combo.clear()
             self.direction_combo.addItem("Все направления")
             for s in specs:
                 self.direction_combo.addItem(s)
 
-            # Заполняем статусы
             statuses = options.get('statuses', [])
             self.status_combo.clear()
             self.status_combo.addItem("Все статусы")
@@ -178,7 +169,6 @@ class MyAthletesWindow(SpecialistBaseWindow):
         self.page = 1
         self.search_text = self.search_input.text().strip()
         d = self.direction_combo.currentText()
-        # Проверяем все возможные "пустые" значения
         self.direction_filter = d if d not in ("Все направления", "Направление") else None
         s = self.status_combo.currentText()
         self.status_filter = s if s not in ("Все статусы", "Статус") else None
@@ -210,7 +200,7 @@ class MyAthletesWindow(SpecialistBaseWindow):
         if not athletes:
             empty = QLabel("Спортсменов не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; background: transparent;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; background: transparent; border: none;")
             self.scroll_layout.addWidget(empty)
         else:
             for a in athletes:
@@ -232,10 +222,14 @@ class MyAthletesWindow(SpecialistBaseWindow):
 
     def _open_athlete(self, athlete):
         from ui.athlete_profile_window import AthleteProfileWindow
+        def on_status_updated():
+            self._refresh()
+        
         self.athlete_win = AthleteProfileWindow(
             self.user_data, 
             athlete, 
-            on_unbound=lambda: self._refresh()
+            on_unbound=lambda: self._refresh(),
+            on_status_changed=on_status_updated 
         )
         self.athlete_win.show()
 
@@ -327,12 +321,14 @@ class MyAthletesWindow(SpecialistBaseWindow):
                 success_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
                 success_msg.button(QMessageBox.StandardButton.Ok).setText("Хорошо")
                 success_msg.exec()
-                
-                # Сброс фильтров и перезагрузка списка
+
                 self.search_input.clear()
                 self.direction_combo.setCurrentIndex(0)
                 self.status_combo.setCurrentIndex(0)
                 self.page = 1
+
+                self._load_filter_options()
+
                 self._refresh()
             else:
                 error_msg = QMessageBox(self)

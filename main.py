@@ -6,10 +6,6 @@ from ui.login_window import LoginWindow
 
 def main():
     app = QApplication(sys.argv)
-    # Без setQuitOnLastWindowClosed(False) — приложение корректно завершается
-    # когда закрывается последнее окно. Навигация между окнами теперь
-    # сначала показывает новое окно, потом закрывает старое — Qt не видит
-    # момента «0 открытых окон» и процесс не зависает.
 
     font_id = QFontDatabase.addApplicationFont("fonts/Alegreya-Regular.ttf")
     if font_id != -1:

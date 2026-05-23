@@ -344,7 +344,8 @@ def get_medical_data(athlete_id, exam_date=None, exam_type=None):
                 'doctor_fio': doctor_fio,
                 'doctor_email': doctor_email,
                 'metrics': [
-                    {'type': m.metric_type, 'value': m.value, 'unit': m.unit, 'is_critical': m.is_critical} 
+                    {'type': m.metric_type, 'value': m.value, 'unit': m.unit,
+                     'ref_range': m.ref_range or '', 'is_critical': bool(m.is_critical)} 
                     for m in metrics
                 ],
                 'recommendations': list(recommendations),
@@ -388,21 +389,41 @@ def get_training_plan(athlete_id, start_date=None, end_date=None):
     
 def sync_overdue_sessions(athlete_id):
     try:
-        cutoff_date = date.today() - timedelta(days=1)
-        overdue_ids = [
-            s.id for s in Session.select().join(TrainingPlan).where(
-                (TrainingPlan.athlete == athlete_id) &
-                (Session.status == 'запланировано') &
-                (Session.date < cutoff_date) &
-                (Session.is_deleted == False)
-            )
-        ]
-        if overdue_ids:
-            Session.update(status='пропущено').where(Session.id << overdue_ids).execute()
-            return True
-        return False
-    except OperationalError:
-        return False
+        if db.is_closed():
+            db.connect()
+        
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(hours=24)
+        
+        # Находим все запланированные занятия, которые прошли более 24 часов назад
+        overdue = Session.select().join(TrainingPlan).where(
+            (TrainingPlan.athlete == athlete_id) &
+            (Session.status == 'запланировано') &
+            (
+                # Дата занятия + 24 часа < сейчас
+                (Session.date < cutoff.date()) |
+                (
+                    (Session.date == cutoff.date()) &
+                    (Session.time is not None) &
+                    (
+                        datetime.combine(Session.date, Session.time) + timedelta(hours=24) < datetime.now()
+                    )
+                )
+            ) &
+            (Session.is_deleted == False)
+        )
+        
+        updated = 0
+        for s in overdue:
+            s.status = 'пропущено'
+            s.save()
+            updated += 1
+        
+        return True, f'Обновлено {updated} занятий', None
+    except OperationalError as e:
+        return False, f'Ошибка БД: {e}', None
+    except Exception as e:
+        return False, f'Ошибка: {e}', None
 
 def update_session_status(session_id, athlete_id, new_status):
     valid_statuses = ['запланировано', 'выполнено', 'пропущено']
@@ -432,7 +453,6 @@ def get_chat_partners(current_user_id):
         if db.is_closed():
             db.connect()
     
-        # ✅ Используем _id поля для надёжности
         sent_ids = [m.receiver_id for m in Message.select(Message.receiver_id).where(Message.sender_id == current_user_id).distinct()]
         recv_ids = [m.sender_id for m in Message.select(Message.sender_id).where(Message.receiver_id == current_user_id).distinct()]
         partner_ids = list(set(sent_ids + recv_ids))
@@ -567,7 +587,6 @@ def get_my_athletes(specialist_id, page=1, per_page=5, search=None, sport_type=N
         if db.is_closed():
             db.connect()
 
-        # 1. Получаем ID спортсменов, привязанных к специалисту
         binding_ids = list(
             SpecialistBinding.select(SpecialistBinding.athlete)
             .where(
@@ -581,10 +600,8 @@ def get_my_athletes(specialist_id, page=1, per_page=5, search=None, sport_type=N
         if not athlete_ids:
             return True, 'Список пуст', {'athletes': [], 'total': 0, 'page': page, 'per_page': per_page}
 
-        # 2. Базовый запрос к таблице пользователей
         query = User.select().where(User.id << athlete_ids)
 
-        # 3. Фильтр поиска (по ФИО)
         if search and len(search.strip()) >= 3:
             q = search.strip().lower()
             query = query.where(
@@ -593,11 +610,9 @@ def get_my_athletes(specialist_id, page=1, per_page=5, search=None, sport_type=N
                 (fn.LOWER(User.middle_name).contains(q))
             )
 
-        # 4. Фильтр по виду спорта
         if sport_type and sport_type.strip():
             query = query.where(fn.LOWER(User.specialization).contains(sport_type.strip().lower()))
 
-        # 5. Фильтр по статусу готовности (применяем ДО пагинации!)
         if status and status.strip():
             status_val = status.strip()
             valid_ids = []
@@ -610,10 +625,8 @@ def get_my_athletes(specialist_id, page=1, per_page=5, search=None, sport_type=N
                     pass
             query = query.where(User.id << valid_ids)
 
-        # 6. Считаем общее количество ПОСЛЕ всех фильтров, но ДО пагинации
         total = query.count()
 
-        # 7. Сортировка и пагинация
         users = list(query.order_by(User.last_name.asc()).paginate(page, per_page))
 
         result = []
@@ -860,7 +873,6 @@ def edit_session(specialist_id, session_id, date, time, activity_type, duration)
         if session.status in ['выполнено', 'пропущено']:
             return False, 'Занятие выполнено. Редактирование невозможно', None
 
-        # ✅ ПРОВЕРКА ДАТЫ ПО РАМКАМ ПЛАНА
         plan = TrainingPlan.get_by_id(session.plan_id)
         if date < plan.start_date or date > plan.end_date:
             return False, f'Дата должна быть в рамках плана ({plan.start_date} — {plan.end_date})', None
@@ -935,7 +947,7 @@ def add_recommendation_to_session(specialist_id, session_id, text):
             Recommendation.create(
                 author=specialist_id,
                 athlete=session.plan.athlete_id,
-                linked_entity='тренировочный план',  # ✅ ИСПРАВЛЕНО
+                linked_entity='тренировочный план', 
                 linked_entity_id=session_id,
                 text=clean_text
             )
@@ -999,13 +1011,10 @@ def get_athlete_medical_data_for_coach(specialist_id, athlete_id, exam_date=None
         return False, f"Ошибка подключения: {e}", None
     
 def update_athlete_status(specialist_id, athlete_id, new_status):
-    # 🔪 Нормализация + удаление ВСЕХ пробелов + приведение к нижнему регистру
     clean_status = unicodedata.normalize('NFKC', new_status.strip().lower())
-    
     valid_statuses = ['здоров', 'устал', 'болен']
     
     if clean_status not in valid_statuses:
-        # Возвращаем точное значение для мгновенной отладки
         return False, f'Недопустимый статус: "{clean_status}"', None
 
     try:
@@ -1027,10 +1036,10 @@ def update_athlete_status(specialist_id, athlete_id, new_status):
                 ReadinessStatus.athlete == athlete_id
             ).order_by(ReadinessStatus.id.desc()).get()
 
-            if last_status.lock_status == 'заблокировано':
-                initiator = last_status.initiator
-                if initiator.role == 'врач' and specialist_role == 'тренер':
-                    return False, 'Статус заблокирован врачом. Действие отменено.', None
+            if last_status.initiator.role == 'врач':
+                if specialist_role == 'тренер' and last_status.current_status in ['болен', 'устал']:
+                    return False, 'Статус заблокирован врачом (спортсмен болен или устал).', None
+                
         except DoesNotExist:
             pass 
 
@@ -1040,7 +1049,7 @@ def update_athlete_status(specialist_id, athlete_id, new_status):
             ReadinessStatus.create(
                 athlete=athlete_id,
                 initiator=specialist_id,
-                current_status=clean_status,  # ✅ Сохраняем уже очищенное значение
+                current_status=clean_status,
                 lock_status=lock_status  
             )
             
@@ -1206,7 +1215,7 @@ def add_diary_recommendation(specialist_id, entry_id, text):
             Recommendation.create(
                 author=specialist_id,
                 athlete=entry.athlete_id,
-                linked_entity='дневник нагрузок',  # ✅ ИСПРАВЛЕНО
+                linked_entity='дневник нагрузок', 
                 linked_entity_id=entry_id,
                 text=clean_text
             )
@@ -1266,7 +1275,7 @@ def get_athlete_plan_for_doctor(doctor_id, athlete_id, start_date=None, end_date
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
     
-def get_athlete_medical_records(doctor_id, athlete_id):
+def get_athlete_medical_records(doctor_id, athlete_id, exam_type=None):
     try:
         if db.is_closed():
             db.connect()
@@ -1278,9 +1287,11 @@ def get_athlete_medical_records(doctor_id, athlete_id):
         ).exists():
             return False, 'Спортсмен не закреплён за вами', None
 
-        exams = MedicalExam.select().where(
-            MedicalExam.athlete == athlete_id
-        ).order_by(MedicalExam.exam_date.desc())
+        conditions = [MedicalExam.athlete == athlete_id]
+        if exam_type:
+            conditions.append(MedicalExam.exam_type == exam_type)
+
+        exams = MedicalExam.select().where(*conditions).order_by(MedicalExam.exam_date.desc())
 
         result = []
         for exam in exams:
@@ -1293,26 +1304,31 @@ def get_athlete_medical_records(doctor_id, athlete_id):
                 (Recommendation.linked_entity_id == exam.id)
             ).order_by(Recommendation.id.desc())
 
-            doctor = exam.doctor
-            doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
+            try:
+                doctor = exam.doctor
+                doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
+                doctor_email = doctor.email
+            except DoesNotExist:
+                doctor_fio = "Врач удалён"
+                doctor_email = "—"
 
             result.append({
                 'exam_id': exam.id,
                 'exam_date': exam.exam_date,
                 'exam_type': exam.exam_type,
                 'doctor_fio': doctor_fio,
-                'doctor_email': doctor.email,
+                'doctor_email': doctor_email,
                 'metrics': [{
                     'id': m.id,
                     'type': m.metric_type,
                     'value': m.value,
                     'unit': m.unit,
-                    'is_critical': m.is_critical
+                    'ref_range': m.ref_range or '',
+                    'is_critical': bool(m.is_critical)
                 } for m in metrics],
                 'recommendations': [{
                     'id': r.id,
-                    'text': r.text,
-                    # ✅ Убрали несуществующее поле created_at
+                    'text': r.text
                 } for r in recommendations]
             })
 
@@ -1321,12 +1337,14 @@ def get_athlete_medical_records(doctor_id, athlete_id):
         return False, f"Ошибка БД: {e}", None
     
 def create_medical_exam(athlete_id, doctor_id, date, exam_type, metrics):
+    if date > date.today():
+        return False, 'Дата осмотра не может быть в будущем', None
+
     try:
         if db.is_closed():
             db.connect()
 
         with db.atomic():
-            # 1. Создаем запись об осмотре
             exam = MedicalExam.create(
                 athlete=athlete_id,
                 doctor=doctor_id,
@@ -1335,14 +1353,11 @@ def create_medical_exam(athlete_id, doctor_id, date, exam_type, metrics):
                 is_deleted=False
             )
 
-            # 2. Добавляем показатели
             for m in metrics:
-                # ✅ Автоматическая проверка критичности на основе нормы
                 is_crit = False
                 ref = m.get('ref_range', '')
                 val = m.get('value', 0)
                 
-                # Если есть дефис, значит это диапазон (например 4.0-4.6)
                 if '-' in str(ref):
                     try:
                         low, high = map(float, ref.split('-'))
@@ -1356,8 +1371,8 @@ def create_medical_exam(athlete_id, doctor_id, date, exam_type, metrics):
                     metric_type=m['metric_type'],
                     value=val,
                     unit=m.get('unit', ''),
-                    ref_range=ref,        # ✅ Сохраняем норму в БД
-                    is_critical=is_crit   # ✅ Сохраняем вычисленный статус
+                    ref_range=ref,
+                    is_critical=is_crit
                 )
 
         return True, 'Осмотр сохранён', {'exam_id': exam.id}
@@ -1438,14 +1453,10 @@ def add_medical_recommendation(doctor_id, exam_id, text):
         return False, f"Ошибка БД: {e}", None
     
 def generate_report(specialist_id, athlete_id, report_type, start_date, end_date, fmt='excel', save_dir='./reports', report_name='Отчёт'):
-    """
-    report_type: 'general' | 'medical' | 'training' | 'diary'
-    """
     try:
         if db.is_closed():
             db.connect()
 
-        # Проверяем/собираем список спортсменов
         if athlete_id is not None:
             if not SpecialistBinding.select().where(
                 (SpecialistBinding.athlete == athlete_id) &
@@ -1515,12 +1526,13 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
                 for exam in exams:
                     metrics = MedicalMetric.select().where(MedicalMetric.exam == exam)
                     for m in metrics:
+                        critical_text = 'Да' if m.is_critical else 'Нет'
                         medical_rows.append([
                             aname, str(exam.exam_date), exam.exam_type or '',
                             m.metric_type or '',
                             str(m.value) if m.value is not None else '',
                             m.unit or '',
-                            'Да' if m.is_critical else 'Нет'
+                            critical_text 
                         ])
 
             if include_diary:
@@ -1539,7 +1551,6 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
         if not training_rows and not medical_rows and not diary_rows:
             return False, 'Данных за выбранный период не найдено.', None
 
-        # ── EXCEL ─────────────────────────────────────────────────────
         if fmt == 'excel':
             try:
                 from openpyxl import Workbook
@@ -1553,11 +1564,13 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
             header_fill = PatternFill("solid", fgColor="1a1a1a")
             title_font = Font(bold=True, size=14, color="1a1a1a")
             period_font = Font(size=11, color="555555")
+            critical_fill = PatternFill("solid", fgColor="ffcccc")
+            critical_font = Font(color="cc0000", bold=True)
 
-            def make_sheet(ws, headers, rows, title_text, period_text):
-                # 1. Заголовок и период
+            def make_sheet(ws, headers, rows, title_text, period_text, critical_col_idx=None):
                 from openpyxl.utils import get_column_letter
                 last_col = len(headers)
+                
                 ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
                 title_cell = ws.cell(row=1, column=1, value=title_text)
                 title_cell.font = title_font
@@ -1568,7 +1581,6 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
                 period_cell.font = period_font
                 period_cell.alignment = Alignment(horizontal='center')
 
-                # 2. Шапка таблицы
                 for col_idx, h in enumerate(headers, 1):
                     cell = ws.cell(row=3, column=col_idx, value=h)
                     cell.font = header_font_white
@@ -1576,13 +1588,18 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
                     cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                     cell.border = Border(bottom=Side(style='medium'))
 
-                # 3. Данные
                 for r_idx, row_data in enumerate(rows, 4):
                     for c_idx, val in enumerate(row_data, 1):
                         cell = ws.cell(row=r_idx, column=c_idx, value=val)
                         cell.alignment = Alignment(vertical='top', wrap_text=True)
 
-                # 4. ✅ Умная ширина колонок (без наложений)
+                        if critical_col_idx is not None:
+                            if c_idx == critical_col_idx and val == 'Да':
+                                for highlight_c in range(1, last_col + 1):
+                                    highlight_cell = ws.cell(row=r_idx, column=highlight_c)
+                                    highlight_cell.fill = critical_fill
+                                    highlight_cell.font = critical_font
+
                 for c in range(1, last_col + 1):
                     col_letter = get_column_letter(c)
                     max_len = 0
@@ -1590,24 +1607,25 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
                         for cell in row:
                             if cell.value:
                                 max_len = max(max_len, len(str(cell.value)))
-                    # Кириллица шире, добавляем коэффициент 1.3 и отступ +2
                     width = min(max(max_len * 1.3 + 2, 12), 45)
                     ws.column_dimensions[col_letter].width = width
 
-                # Фиксируем первую строку (заголовки) при прокрутке
                 ws.freeze_panes = 'A4'
 
             if include_training and training_rows:
                 ws = wb.create_sheet('Тренировки')
-                make_sheet(ws, ['Спортсмен', 'Дата', 'Активность', 'Длительность (мин)', 'Статус'], training_rows, report_name, period_str)
+                make_sheet(ws, ['Спортсмен', 'Дата', 'Активность', 'Длительность (мин)', 'Статус'], 
+                          training_rows, report_name, period_str)
 
             if include_medical and medical_rows:
                 ws = wb.create_sheet('Медосмотры')
-                make_sheet(ws, ['Спортсмен', 'Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'], medical_rows, report_name, period_str)
+                make_sheet(ws, ['Спортсмен', 'Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'], 
+                          medical_rows, report_name, period_str, critical_col_idx=7)
 
             if include_diary and diary_rows:
                 ws = wb.create_sheet('Дневник нагрузок')
-                make_sheet(ws, ['Спортсмен', 'Дата', 'Активность', 'Длительность', 'Шаги', 'Сон (ч)', 'Усталость', 'Настроение'], diary_rows, report_name, period_str)
+                make_sheet(ws, ['Спортсмен', 'Дата', 'Активность', 'Длительность', 'Шаги', 'Сон (ч)', 'Усталость', 'Настроение'], 
+                          diary_rows, report_name, period_str)
 
             if not wb.worksheets:
                 ws = wb.create_sheet('Нет данных')
@@ -1615,7 +1633,6 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
 
             wb.save(filename)
 
-        # ── PDF ───────────────────────────────────────────────────────
         elif fmt == 'pdf':
             try:
                 from reportlab.lib.pagesizes import A4, landscape
@@ -1663,26 +1680,35 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
             h2_style = ParagraphStyle('H2', fontName=font_name, fontSize=11, leading=17, spaceAfter=1, textColor=colors.HexColor('#555555'))
             h3_style = ParagraphStyle('H3', fontName=font_name, fontSize=14, leading=18, spaceAfter=8, textColor=colors.HexColor('#1a1a1a'), fontWeight='bold')
 
-            def make_table(headers, rows, col_ratios=None):
+            def make_table(headers, rows, col_ratios=None, critical_col_idx=None):
                 col_w = [W * r for r in col_ratios] if col_ratios else [W / len(headers)] * len(headers)
                 data = [headers] + rows if rows else [headers, ['Нет данных']]
                 t = Table(data, colWidths=col_w, repeatRows=1)
-                t.setStyle([
+                
+                style = [
                     ('FONTNAME', (0, 0), (-1, -1), font_name),
                     ('FONTSIZE', (0, 0), (-1, 0), 10),
                     ('FONTSIZE', (0, 1), (-1, -1), 9),
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a1a')),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                     ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # ✅ Вертикальное выравнивание по верху
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                     ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
                     ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#cccccc')),
                     ('LEFTPADDING', (0, 0), (-1, -1), 6),
                     ('RIGHTPADDING', (0, 0), (-1, -1), 6),
                     ('TOPPADDING', (0, 0), (-1, -1), 5),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                    ('WORDWRAP', (0, 0), (-1, -1), 'CJK') # ✅ Перенос длинных слов
-                ])
+                    ('WORDWRAP', (0, 0), (-1, -1), 'CJK')
+                ]
+                
+                if critical_col_idx is not None:
+                    for row_idx, row_data in enumerate(rows, 1): 
+                        if len(row_data) >= critical_col_idx and row_data[critical_col_idx - 1] == 'Да':
+                            style.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#ffcccc')))
+                            style.append(('TEXTCOLOR', (0, row_idx), (-1, row_idx), colors.HexColor('#cc0000')))
+                
+                t.setStyle(style)
                 return t
 
             elements = []
@@ -1691,24 +1717,31 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
             elements.append(Spacer(1, 12))
 
             if include_training and training_rows:
-                elements.append(Paragraph('Тренировочные планы', h3_style))
+                elements.append(Paragraph('Тренировки', h3_style))
                 t_rows = [[r[0], r[1], r[2], str(r[3]), r[4]] for r in training_rows]
-                # ✅ Сбалансированные пропорции (сумма = 1.0)
-                elements.append(make_table(['Спортсмен', 'Дата', 'Активность', 'Длительность (мин)', 'Статус'], t_rows, col_ratios=[0.20, 0.12, 0.32, 0.18, 0.18]))
-                elements.append(Spacer(1, 16))
+                elements.append(make_table(['Спортсмен', 'Дата', 'Активность', 'Длительность (мин)', 'Статус'], 
+                                         t_rows, col_ratios=[0.20, 0.12, 0.32, 0.18, 0.18]))
+                if report_type == 'general':
+                    elements.append(PageBreak())
+                else:
+                    elements.append(Spacer(1, 16))
+
+            if include_medical and medical_rows:
+                elements.append(Paragraph('Медицинские показатели', h3_style))
+                m_rows = [[r[0], r[1], r[2], r[3], r[4], r[5], r[6]] for r in medical_rows]
+                elements.append(make_table(['Спортсмен', 'Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'], 
+                                         m_rows, col_ratios=[0.16, 0.10, 0.18, 0.22, 0.10, 0.10, 0.14], 
+                                         critical_col_idx=7))
+                if report_type == 'general' and include_diary:
+                    elements.append(PageBreak())
+                elif report_type != 'general':
+                    elements.append(Spacer(1, 16))
 
             if include_diary and diary_rows:
                 elements.append(Paragraph('Дневник нагрузок', h3_style))
                 d_rows = [[r[0], r[1], r[2], str(r[3]), str(r[4]), str(r[5]), str(r[6]), str(r[7])] for r in diary_rows]
-                elements.append(make_table(['Спортсмен', 'Дата', 'Активность', 'Длительность', 'Шаги', 'Сон', 'Усталость', 'Настроение'], d_rows, col_ratios=[0.14, 0.10, 0.20, 0.11, 0.11, 0.08, 0.08, 0.18]))
-                elements.append(Spacer(1, 16))
-
-            if include_medical and medical_rows:
-                if report_type in ('general', 'diary'):
-                    elements.append(PageBreak())
-                elements.append(Paragraph('Медицинские показатели', h3_style))
-                m_rows = [[r[0], r[1], r[2], r[3], r[4], r[5], r[6]] for r in medical_rows]
-                elements.append(make_table(['Спортсмен', 'Дата', 'Тип осмотра', 'Показатель', 'Значение', 'Ед.изм.', 'Критично'], m_rows, col_ratios=[0.16, 0.10, 0.18, 0.22, 0.10, 0.10, 0.14]))
+                elements.append(make_table(['Спортсмен', 'Дата', 'Активность', 'Длительность', 'Шаги', 'Сон', 'Усталость', 'Настроение'], 
+                                         d_rows, col_ratios=[0.14, 0.10, 0.20, 0.11, 0.11, 0.08, 0.08, 0.18]))
 
             try:
                 doc.build(elements)
@@ -1749,7 +1782,6 @@ def remove_athlete_from_list(specialist_id, athlete_id):
     
 def get_session_recommendations(session_id):
     try:
-        # ✅ ИСПРАВЛЕНО: теперь ищем по 'тренировочный план', как вы записываете в БД
         recommendations = Recommendation.select().where(
             (Recommendation.linked_entity == 'тренировочный план') &
             (Recommendation.linked_entity_id == session_id)
@@ -1804,10 +1836,8 @@ def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_pa
         if activity_type is not None and activity_type.strip() != "":
             query = query.where(TrainingDiary.activity_type == activity_type)
 
-        # Сортировка: новые записи сверху
         query = query.order_by(TrainingDiary.date.desc())
 
-        # Пагинация
         total = query.count()
         offset = (page - 1) * per_page
         entries = list(query.limit(per_page).offset(offset))
@@ -1817,10 +1847,7 @@ def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_pa
         print(f"Ошибка get_diary_entries: {e}")
         return False, str(e), {"entries": [], "total": 0}
 
-# Вставьте эти функции в конец файла core/operations.py
-
 def get_medical_filter_options(athlete_id):
-    """Получает уникальные типы осмотров для спортсмена"""
     try:
         if db.is_closed():
             db.connect()
@@ -1835,7 +1862,6 @@ def get_medical_filter_options(athlete_id):
         return False, str(e), []
 
 def get_diary_filter_options(athlete_id):
-    """Получает уникальные типы занятий из дневника"""
     try:
         if db.is_closed():
             db.connect()
@@ -1849,15 +1875,16 @@ def get_diary_filter_options(athlete_id):
         return False, str(e), []
 
 def get_athlete_filter_options(specialist_id):
-    """Получает уникальные специализации и статусы для списка спортсменов тренера"""
     try:
         if db.is_closed():
             db.connect()
         
-        # Получаем ID всех спортсменов, привязанных к специалисту
         athlete_ids = list(
             SpecialistBinding.select(SpecialistBinding.athlete_id)
-            .where((SpecialistBinding.specialist_id == specialist_id) & (SpecialistBinding.is_deleted == False))
+            .where(
+                (SpecialistBinding.specialist_id == specialist_id) & 
+                (SpecialistBinding.is_deleted == False)
+            )
             .tuples()
         )
         if not athlete_ids:
@@ -1865,16 +1892,23 @@ def get_athlete_filter_options(specialist_id):
         
         athlete_ids = [id[0] for id in athlete_ids]
 
-        # 1. Уникальные специализации (направления)
         specs = (User.select(User.specialization)
                  .where((User.id << athlete_ids) & (User.specialization.is_null(False)))
                  .distinct()
                  .order_by(User.specialization.asc()))
         spec_list = [s.specialization for s in specs if s.specialization]
 
-        # 2. Уникальные статусы готовности (из таблицы ReadinessStatus)
+        latest_status_subquery = (
+            ReadinessStatus.select(
+                ReadinessStatus.athlete_id,
+                fn.MAX(ReadinessStatus.id).alias('max_id')
+            )
+            .where(ReadinessStatus.athlete_id << athlete_ids)
+            .group_by(ReadinessStatus.athlete_id)
+        )
+
         statuses = (ReadinessStatus.select(ReadinessStatus.current_status)
-                    .where(ReadinessStatus.athlete_id << athlete_ids)
+                    .where(ReadinessStatus.id << [s.max_id for s in latest_status_subquery])
                     .distinct()
                     .order_by(ReadinessStatus.current_status.asc()))
         stat_list = [s.current_status for s in statuses if s.current_status]

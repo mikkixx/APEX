@@ -26,7 +26,6 @@ class MedicalWindow(BaseWindow):
         layout.addWidget(title)
         layout.addSpacing(12)
 
-        # === FILTER PANEL ===
         filter_card = QFrame()
         filter_card.setStyleSheet("""
             QFrame { border: none; border-radius: 18px; background: #fafafa; }
@@ -155,7 +154,7 @@ class MedicalWindow(BaseWindow):
         cl.setSpacing(6)
 
         title_lbl = QLabel(f"Медицинский осмотр ({exam['exam_date']})")
-        title_lbl.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 4px; border: none; background: transparent;")
+        title_lbl.setStyleSheet("font-size: 24px; font-weight: bold; border: none; background: transparent;")
         cl.addWidget(title_lbl)
 
         def row(label, value, critical=False):
@@ -180,12 +179,15 @@ class MedicalWindow(BaseWindow):
         cl.addWidget(metrics_title)
 
         for m in exam.get('metrics', []):
+            ref = m.get('ref_range', '')
             display = f"{m['value']} {m['unit']}"
-            if m.get('is_critical'):
-                display += " (критично)"
-            cl.addLayout(row(m['type'], display, critical=m.get('is_critical', False)))
+            if ref and ref != '—':
+                display += f"  |  норма: {ref}"
+            is_crit = bool(m.get('is_critical', False))
+            if is_crit:
+                display += "  ⚠ критично"
+            cl.addLayout(row(m['type'], display, critical=is_crit))
 
-        # ✅ ЗАГОЛОВОК РЕКОМЕНДАЦИЙ
         rec_title = QLabel("Рекомендации врача")
         rec_title.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 10px; border: none; background: transparent;")
         rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -200,7 +202,6 @@ class MedicalWindow(BaseWindow):
             rec_box.setPlainText(r_text)
             rec_box.setReadOnly(True)
             rec_box.setFixedHeight(80)
-            # ✅ ✅ Рамка и фон возвращены для рекомендаций
             rec_box.setStyleSheet("""
                 QTextEdit {
                     border: 1px solid #e0e0e0;
@@ -213,7 +214,6 @@ class MedicalWindow(BaseWindow):
             """)
             cl.addWidget(rec_box)
         else:
-            # ✅ Рамка и фон возвращены для заглушки
             no_rec_box = QLabel("Рекомендаций нет.")
             no_rec_box.setAlignment(Qt.AlignmentFlag.AlignLeft)
             no_rec_box.setStyleSheet("""

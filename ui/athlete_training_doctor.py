@@ -7,8 +7,6 @@ from core.operations import get_training_plan
 from PyQt6.QtGui import QFont
 
 class AthleteTrainingDoctor:
-    """Компонент плана для врача. Работает внутри любого QWidget."""
-    
     def __init__(self, specialist_data, athlete_data, layout, parent_widget=None):
         self.specialist_data = specialist_data
         self.athlete_data = athlete_data
@@ -109,11 +107,9 @@ class AthleteTrainingDoctor:
         cl.addLayout(row("Тип занятия", session.activity_type))
         cl.addLayout(row("Длительность", f"{session.duration} мин"))
 
-        # ✅ Единый ряд для статуса и кнопки
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
-        # ✅ Статус: чёрная обводка, прозрачный фон, чёрный текст
         status_badge = QPushButton(session.status.capitalize())
         status_badge.setEnabled(False)
         status_badge.setFixedHeight(46)
@@ -123,7 +119,6 @@ class AthleteTrainingDoctor:
         """)
         btn_row.addWidget(status_badge)
 
-        # ✅ Кнопка Подробнее: чёрный фон, белый текст, та же высота
         detail_btn = QPushButton("Подробнее")
         detail_btn.setFixedHeight(46)
         detail_btn.setStyleSheet("""
@@ -139,7 +134,6 @@ class AthleteTrainingDoctor:
 
     def _open_detail(self, session):
         from ui.session_detail_window import SessionDetailWindow
-        # ✅ Исправлено: передаём только сессию и ID спортсмена (как в training_plan_window)
         self.detail_win = SessionDetailWindow(session, self.athlete_data['id'])
         self.detail_win.show()
 
