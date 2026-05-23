@@ -227,7 +227,6 @@ class AthleteMedicalCoach:
 
         self.scroll_layout.addWidget(card)
 
-
     def _prev(self):
         if self.page > 1:
             self.page -= 1

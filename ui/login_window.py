@@ -2,9 +2,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QMessageBox
 )
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
-
 
 class LoginWindow(QWidget):
     def __init__(self):
@@ -18,7 +17,6 @@ class LoginWindow(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Logo at top center
         top = QHBoxLayout()
         top.setContentsMargins(0, 32, 0, 0)
         top.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -35,7 +33,6 @@ class LoginWindow(QWidget):
 
         root.addStretch(1)
 
-        # Form
         form_wrapper = QHBoxLayout()
         form_wrapper.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         form = QVBoxLayout()

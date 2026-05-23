@@ -5,9 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
 
-
 ROLES = ["спортсмен", "тренер", "врач"]
-
 
 class RegisterWindow(QWidget):
     def __init__(self):

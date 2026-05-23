@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt, QDate, QTimer
 from PyQt6.QtGui import QPixmap, QFont, QPainter, QPainterPath
 from ui.base_window import BaseWindow
 
-
 def _make_round_pixmap(path, size=44):
     pix = QPixmap(path)
     if pix.isNull():
@@ -27,7 +26,6 @@ def _make_round_pixmap(path, size=44):
     painter.drawPixmap(0, 0, pix)
     painter.end()
     return rounded
-
 
 class ChatsWindow(BaseWindow):
     active_tab = "chats"
@@ -52,7 +50,6 @@ class ChatsWindow(BaseWindow):
         main_row.setContentsMargins(0, 0, 0, 0)
         main_row.setSpacing(0)
 
-        # Левая панель
         left_panel = QFrame()
         left_panel.setFixedWidth(240)
         left_panel.setStyleSheet("""

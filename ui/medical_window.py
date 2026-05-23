@@ -162,10 +162,8 @@ class MedicalWindow(BaseWindow):
             lbl_color = "#cc0000" if critical else "#1a1a1a"
             val_color = "#cc0000" if critical else "#777"
             lbl = QLabel(f"{label}:")
-            # ✅ Без рамок
             lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {lbl_color}; border: none; background: transparent;")
             val = QLabel(str(value))
-            # ✅ Без рамок
             val.setStyleSheet(f"font-size: 20px; color: {val_color}; border: none; background: transparent;")
             r.addWidget(lbl); r.addSpacing(4); r.addWidget(val); r.addStretch()
             return r

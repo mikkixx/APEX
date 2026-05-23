@@ -9,14 +9,12 @@ from PyQt6.QtGui import QMouseEvent
 from ui.base_window import SpecialistBaseWindow
 from pathlib import Path
 
-
 class ClickableLineEdit(QLineEdit):
     clicked = pyqtSignal()
     def mousePressEvent(self, event: QMouseEvent):
         super().mousePressEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
-
 
 class ReportsWindow(SpecialistBaseWindow):
     active_tab = "reports"

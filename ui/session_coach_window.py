@@ -6,7 +6,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from core.operations import edit_session, delete_session, add_recommendation_to_session, get_session_recommendations
 
-
 class SessionCoachWindow(QWidget):
     def __init__(self, specialist_data, athlete_data, session, on_close=None):
         super().__init__()

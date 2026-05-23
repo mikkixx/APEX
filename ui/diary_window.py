@@ -92,7 +92,6 @@ class DiaryWindow(BaseWindow):
         layout.addLayout(header_row)
         layout.addSpacing(12)
 
-        # Filter panel
         filter_card = QFrame()
         filter_card.setStyleSheet("""
             QFrame { border: none; border-radius: 18px; background: #fafafa; }
@@ -148,7 +147,6 @@ class DiaryWindow(BaseWindow):
         self.scroll_area.setWidget(self.scroll_widget)
         filter_layout_outer.addWidget(self.scroll_area)
 
-        # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
@@ -174,7 +172,6 @@ class DiaryWindow(BaseWindow):
     def _load_activity_types(self):
         ok, msg, types = get_diary_filter_options(self.user_data['id'])
         if ok and types:
-            # Сохраняем текущий выбор
             current_selection = self.activity_combo.currentText()
             
             self.activity_combo.clear()
@@ -183,7 +180,6 @@ class DiaryWindow(BaseWindow):
                 self.activity_combo.addItem(t)
             self.activity_combo.setEnabled(True)
             
-            # Восстанавливаем выбор, если он есть в новом списке
             idx = self.activity_combo.findText(current_selection)
             if idx >= 0:
                 self.activity_combo.setCurrentIndex(idx)

@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QDate, QTime
 from core.operations import add_session, edit_session
 
-
 class SessionAddWindow(QWidget):
     def __init__(self, plan_id, specialist_id, session=None, on_saved=None):
         super().__init__()

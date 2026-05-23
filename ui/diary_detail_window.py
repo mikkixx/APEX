@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-
 class DiaryDetailWindow(QWidget):
     def __init__(self, entry, user_data, on_close=None):
         super().__init__()

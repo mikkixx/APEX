@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-
 class SessionDetailWindow(QWidget):
     def __init__(self, session, athlete_id):
         super().__init__()

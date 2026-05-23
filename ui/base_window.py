@@ -5,7 +5,6 @@ SPECIALIST_ROLES = ('тренер', 'врач', 'coach', 'doctor')
 def _is_specialist(user_data):
     return str(user_data.get('role', '')).lower() in SPECIALIST_ROLES
 
-
 class BaseWindow(QMainWindow):
     active_tab = ""
 
@@ -100,7 +99,6 @@ class BaseWindow(QMainWindow):
         self._login = LoginWindow()
         self._login.show()
         self.close()
-
 
 class SpecialistBaseWindow(BaseWindow):
     pass

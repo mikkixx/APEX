@@ -5,7 +5,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from db.models import User  
 
-
 class EditProfileWindow(QWidget):
     def __init__(self, user_data, profile_data, on_saved=None):
         super().__init__()

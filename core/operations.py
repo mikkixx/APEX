@@ -62,15 +62,6 @@ def login(email, password):
         return False, 'Пользователь с таким email не найден. Пожалуйста, зарегистрируйтесь.', None
     except OperationalError as e:
         return False, f"Ошибка подключения: {e}", None
-    
-def logout():
-    try:
-        if not db.is_closed():
-            db.close()
-        return True, 'Сеанс завершен. Соединение закрыто.', None
-    except Exception as e:
-        return False, f"Ошибка при выходе: {e}", None
-    
 def change_password(user_id, current_password, new_password, confirm_password):
     if not all([current_password, new_password, confirm_password]):
         return False, 'Заполните все поля', None
@@ -128,7 +119,7 @@ def get_profile(user_id):
     except Exception as e:
         return False, f"Ошибка в get_profile: {e}", None
                                                    
-_PHOTO_UNSET = object()  # Sentinel: отличаем "не передано" от явного None
+_PHOTO_UNSET = object()
 
 def edit_profile(user_id, last_name, first_name, middle_name, email, specialization, photo_path=_PHOTO_UNSET):
     if not all([last_name, first_name, email, specialization]):
@@ -151,9 +142,6 @@ def edit_profile(user_id, last_name, first_name, middle_name, email, specializat
             user.middle_name = middle_name or None
             user.email = email
             user.specialization = specialization
-            # photo_path=None  → удалить фото (пишем NULL в БД)
-            # photo_path=str   → обновить путь
-            # photo_path не передан → не трогать поле
             if photo_path is not _PHOTO_UNSET:
                 user.photo_path = photo_path
             user.save()
@@ -169,37 +157,6 @@ def _get_current_week():
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
     return monday, sunday
-    
-def get_diary_entry_details(entry_id, athlete_id):
-    try:
-        entry = TrainingDiary.get_by_id(entry_id)
-        
-        if entry.athlete_id != athlete_id or entry.is_deleted:
-            return False, 'Запись не найдена или доступ запрещен', None
-        
-        comments = Recommendation.select().where(
-            (Recommendation.linked_entity == 'дневник нагрузок') &
-            (Recommendation.linked_entity_id == entry_id)
-        ).order_by(Recommendation.id.desc())
-
-        formatted_comments = []
-        for comment in comments:
-            author = User.get_by_id(comment.author_id)
-            formatted_comments.append({
-                'text': comment.text,
-                'author_fio': f"{author.last_name} {author.first_name} {author.middle_name or ''}".strip(),
-                'author_role': author.role
-            })
-
-        return True, 'Данные загружены', {
-            'entry': entry,
-            'comments': formatted_comments 
-        }
-    except DoesNotExist:
-        return False, 'Запись не найдена или доступ запрещен', None
-    except OperationalError as e:
-        return False, f"Ошибка подключения к БД: {e}", None
-    
 def add_diary_entry(athlete_id, entry_date, activity_type, duration, steps, sleep_hours, fatigue, mood, comment=None):
     if not all([entry_date, activity_type, duration, sleep_hours, fatigue, mood]):
         return False, 'Заполните все обязательные поля', None
@@ -395,12 +352,10 @@ def sync_overdue_sessions(athlete_id):
         from datetime import datetime, timedelta
         cutoff = datetime.now() - timedelta(hours=24)
         
-        # Находим все запланированные занятия, которые прошли более 24 часов назад
         overdue = Session.select().join(TrainingPlan).where(
             (TrainingPlan.athlete == athlete_id) &
             (Session.status == 'запланировано') &
             (
-                # Дата занятия + 24 часа < сейчас
                 (Session.date < cutoff.date()) |
                 (
                     (Session.date == cutoff.date()) &
@@ -471,37 +426,17 @@ def get_chat_partners(current_user_id):
     except Exception as e:
         return False, f"Ошибка загрузки собеседников: {e}", None
 
-def get_chat_partner_info(partner_id):
-    try:
-        if db.is_closed():
-            db.connect()
-        partner = User.get_by_id(partner_id)
-        return True, 'Данные загружены', {
-            'full_name': f"{partner.last_name} {partner.first_name} {partner.middle_name or ''}".strip(),
-            'role': partner.role,
-            'specialization': partner.specialization, 
-            'photo_path': partner.photo_path
-        }    
-    except DoesNotExist:
-        return False, 'Собеседник не найден', None
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-
 def get_chat_messages(current_user_id, partner_id, search_query=None, start_date=None, end_date=None):
     try:
         if db.is_closed():
             db.connect()
-
+        
         conditions = [
             ((Message.sender == current_user_id) & (Message.receiver == partner_id)) |
             ((Message.sender == partner_id) & (Message.receiver == current_user_id))
         ]
 
         if start_date and end_date:
-            if end_date < start_date:
-                return False, 'Дата начала должна быть раньше даты окончания', None
-            if start_date > date.today() or end_date > date.today():
-                return False, 'Даты не могут быть в будущем', None
             conditions.append(Message.sent_at >= datetime.combine(start_date, datetime.min.time()))
             conditions.append(Message.sent_at <= datetime.combine(end_date, datetime.max.time()))
 
@@ -515,7 +450,7 @@ def get_chat_messages(current_user_id, partner_id, search_query=None, start_date
             .join(User, on=(Message.sender == User.id))
             .where(*conditions)
             .order_by(Message.sent_at.asc()))
-                
+            
         result = []
         for msg in messages:
             is_mine = (msg.sender.id == current_user_id)
@@ -724,199 +659,231 @@ def add_athlete_by_email(specialist_id, athlete_email):
         return False, 'Ошибка целостности данных', None
     except OperationalError as e:
         return False, f"Ошибка подключения к БД: {e}", None
-    
-def get_athlete_profile_full(specialist_id, athlete_id):
+def remove_athlete_from_list(specialist_id, athlete_id):
     try:
         if db.is_closed():
             db.connect()
 
-        binding = SpecialistBinding.select().where(
+        binding = SpecialistBinding.get(
             (SpecialistBinding.athlete == athlete_id) &
             (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна') &
             (SpecialistBinding.is_deleted == False)
-        ).exists()
+        )
 
-        if not binding:
-            return False, 'Спортсмен не закреплён за вами', None
+        with db.atomic():
+            binding.status = 'прекращена'
+            binding.is_deleted = True
+            binding.save()
 
-        athlete = User.get_by_id(athlete_id)
-        try:
-            last_status_rec = ReadinessStatus.select().where(
-                ReadinessStatus.athlete == athlete_id
-            ).order_by(ReadinessStatus.id.desc()).get()
-            
-            current_status = last_status_rec.current_status
-            lock_status = last_status_rec.lock_status
-        except DoesNotExist:
-            current_status = 'Не установлен'
-            lock_status = 'свободно'
-
-        return True, 'Данные загружены', {
-            'id': athlete.id,
-            'full_name': f"{athlete.last_name} {athlete.first_name} {athlete.middle_name or ''}".strip(),
-            'photo_path': athlete.photo_path,
-            'role': athlete.role,
-            'specialization': athlete.specialization,
-            'email': athlete.email,
-            'current_status': current_status,
-            'lock_status': lock_status 
-        }
-
+        return True, 'Спортсмен исключён из списка', None
     except DoesNotExist:
-        return False, 'Спортсмен не найден', None
+        return False, 'Привязка не найдена', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
-
-def get_athlete_sessions(specialist_id, athlete_id, start_date=None, end_date=None, page=1, per_page=3):
-    try:
-        if db.is_closed():
-            db.connect()
-
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна') &
-            (SpecialistBinding.is_deleted == False)
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
-
-        if start_date is None or end_date is None:
-            today = date.today()
-            start_date = today - timedelta(days=today.weekday())
-            end_date = start_date + timedelta(days=6)
-        elif (end_date - start_date).days > 90:
-            return False, 'Диапазон не должен превышать 3 месяца', None
-
-        query = (Session
-            .select(Session, TrainingPlan)
-            .join(TrainingPlan, on=(Session.plan == TrainingPlan.id))
-            .where(
-                (TrainingPlan.athlete == athlete_id) &
-                (Session.date >= start_date) &
-                (Session.date <= end_date) &
-                (Session.is_deleted == False) &
-                (TrainingPlan.is_deleted == False)
-            )
-            .order_by(Session.date.desc(), Session.time.desc()))
-
-        total = query.count()
-        sessions = list(query.paginate(page, per_page))
-
-        result = []
-        for s in sessions:
-            plan_header = f"{s.plan.title} ({s.plan.start_date.strftime('%d.%m.%Y')} - {s.plan.end_date.strftime('%d.%m.%Y')})"
-            
-            result.append({
-                'id': s.id,
-                'plan_header': plan_header, 
-                'date': s.date,
-                'time': s.time,
-                'activity_type': s.activity_type,
-                'duration': s.duration,
-                'status': s.status
-            })
-
-        return True, 'План загружен', {
-            'sessions': result,
-            'total': total,
-            'page': page,
-            'per_page': per_page
-        }
-    except OperationalError as e:
-        return False, f"Ошибка подключения к БД: {e}", None
-       
-def create_training_plan(specialist_id, athlete_id, start_date, end_date, title='Новый план'):
-    try:
-        if db.is_closed():
-            db.connect()
-
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна')
-        ).exists():
-            return False, 'Нет прав на создание плана для этого спортсмена', None
-
-        if start_date < date.today():
-            return False, 'Дата начала не может быть в прошлом', None
-        if end_date <= start_date:
-            return False, 'Дата окончания должна быть позже даты начала', None
-
-        with db.atomic():
-            plan = TrainingPlan.create(
-                athlete=athlete_id,
-                coach=specialist_id,
-                title=title,
-                start_date=start_date,
-                end_date=end_date,
-                is_deleted=False
-            )
-        return True, 'План создан', {'plan_id': plan.id}
-    except IntegrityError as e:
-        return False, 'Ошибка целостности данных', None
-    except OperationalError as e:
-        return False, f"Ошибка подключения: {e}", None
     
-def edit_session(specialist_id, session_id, date, time, activity_type, duration):
-    if duration <= 0:
-        return False, 'Длительность должна быть больше 0', None
+def get_session_recommendations(session_id):
     try:
-        if db.is_closed():
-            db.connect()
-
-        session = Session.get_by_id(session_id)
+        recommendations = Recommendation.select().where(
+            (Recommendation.linked_entity == 'тренировочный план') &
+            (Recommendation.linked_entity_id == session_id)
+        ).order_by(Recommendation.id.desc())
         
-        if session.plan.coach_id != specialist_id:
-            return False, 'Доступ запрещён', None
-
-        if session.status in ['выполнено', 'пропущено']:
-            return False, 'Занятие выполнено. Редактирование невозможно', None
-
-        plan = TrainingPlan.get_by_id(session.plan_id)
-        if date < plan.start_date or date > plan.end_date:
-            return False, f'Дата должна быть в рамках плана ({plan.start_date} — {plan.end_date})', None
-
-        with db.atomic():
-            session.date = date
-            session.time = time
-            session.activity_type = activity_type
-            session.duration = duration
-            session.save()
-            
-        return True, 'Занятие изменено', None
+        result = []
+        for rec in recommendations:
+            author = User.get_by_id(rec.author_id)
+            result.append({
+                'text': rec.text,
+                'author_fio': f"{author.last_name} {author.first_name}".strip(),
+                'author_role': author.role
+            })
+        
+        return True, 'Рекомендации загружены', result
     except DoesNotExist:
         return False, 'Занятие не найдено', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
     
-def delete_training_plan(specialist_id, plan_id):
+def get_recommendations_for_entry(entry_id):
+    try:
+        recs = Recommendation.select().where(
+            (Recommendation.linked_entity == 'дневник нагрузок') &
+            (Recommendation.linked_entity_id == entry_id)
+        ).order_by(Recommendation.id.desc())
+        
+        result = []
+        for rec in recs:
+            author = User.get_by_id(rec.author_id)
+            result.append({
+                'text': rec.text,
+                'author_fio': f"{author.last_name} {author.first_name}".strip(),
+                'author_role': author.role
+            })
+        return True, 'Загружены', result
+    except Exception as e:
+        return False, str(e), None
+
+def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3, activity_type=None):
+    try:
+        
+        query = TrainingDiary.select().where(
+            (TrainingDiary.athlete_id == athlete_id) &
+            (TrainingDiary.is_deleted == False)
+        )
+
+        if start_date is not None:
+            query = query.where(TrainingDiary.date >= start_date)
+        if end_date is not None:
+            query = query.where(TrainingDiary.date <= end_date)
+        if activity_type is not None and activity_type.strip() != "":
+            query = query.where(TrainingDiary.activity_type == activity_type)
+
+        query = query.order_by(TrainingDiary.date.desc())
+
+        total = query.count()
+        offset = (page - 1) * per_page
+        entries = list(query.limit(per_page).offset(offset))
+
+        return True, "OK", {"entries": entries, "total": total}
+    except Exception as e:
+        print(f"Ошибка get_diary_entries: {e}")
+        return False, str(e), {"entries": [], "total": 0}
+
+def get_medical_filter_options(athlete_id):
     try:
         if db.is_closed():
             db.connect()
-        plan = TrainingPlan.get_by_id(plan_id)
-        
-        if plan.coach_id != specialist_id:
-            return False, 'Доступ запрещён', None
+        types = (MedicalExam
+                 .select(MedicalExam.exam_type)
+                 .where(MedicalExam.athlete_id == athlete_id)
+                 .distinct()
+                 .order_by(MedicalExam.exam_type.asc()))
+        return True, 'Ok', [t.exam_type for t in types if t.exam_type]
+    except Exception as e:
+        return False, str(e), []
 
-        if plan.end_date <= date.today():
-            return False, 'Удаление доступно только до окончания периода плана', None
+def get_diary_filter_options(athlete_id):
+    try:
+        if db.is_closed():
+            db.connect()
+        types = (TrainingDiary
+                 .select(TrainingDiary.activity_type)
+                 .where((TrainingDiary.athlete_id == athlete_id) & (TrainingDiary.is_deleted == False))
+                 .distinct()
+                 .order_by(TrainingDiary.activity_type.asc()))
+        return True, 'Ok', [t.activity_type for t in types if t.activity_type]
+    except Exception as e:
+        return False, str(e), []
+
+def get_athlete_filter_options(specialist_id):
+    try:
+        if db.is_closed():
+            db.connect()
+        
+        athlete_ids = list(
+            SpecialistBinding.select(SpecialistBinding.athlete_id)
+            .where(
+                (SpecialistBinding.specialist_id == specialist_id) & 
+                (SpecialistBinding.is_deleted == False)
+            )
+            .tuples()
+        )
+        if not athlete_ids:
+            return True, 'Ok', {'specializations': [], 'statuses': []}
+        
+        athlete_ids = [id[0] for id in athlete_ids]
+
+        specs = (User.select(User.specialization)
+                 .where((User.id << athlete_ids) & (User.specialization.is_null(False)))
+                 .distinct()
+                 .order_by(User.specialization.asc()))
+        spec_list = [s.specialization for s in specs if s.specialization]
+
+        latest_status_subquery = (
+            ReadinessStatus.select(
+                ReadinessStatus.athlete_id,
+                fn.MAX(ReadinessStatus.id).alias('max_id')
+            )
+            .where(ReadinessStatus.athlete_id << athlete_ids)
+            .group_by(ReadinessStatus.athlete_id)
+        )
+
+        statuses = (ReadinessStatus.select(ReadinessStatus.current_status)
+                    .where(ReadinessStatus.id << [s.max_id for s in latest_status_subquery])
+                    .distinct()
+                    .order_by(ReadinessStatus.current_status.asc()))
+        stat_list = [s.current_status for s in statuses if s.current_status]
+
+        return True, 'Ok', {'specializations': spec_list, 'statuses': stat_list}
+    except Exception as e:
+        return False, str(e), {'specializations': [], 'statuses': []}
+
+def add_diary_recommendation(specialist_id, entry_id, text):
+    clean_text = text.strip()
+    if not clean_text:
+        return False, 'Текст не может быть пустым', None
+    if len(clean_text) > 500:
+        return False, 'Текст не должен превышать 500 символов', None
+    try:
+        if db.is_closed():
+            db.connect()
+
+        entry = TrainingDiary.get_by_id(entry_id)
+        
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == entry.athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
 
         with db.atomic():
-            plan.is_deleted = True
-            plan.save()
+            Recommendation.create(
+                author=specialist_id,
+                athlete=entry.athlete_id,
+                linked_entity='дневник нагрузок', 
+                linked_entity_id=entry_id,
+                text=clean_text
+            )
             
-            Session.update(is_deleted=True).where(
-                (Session.plan == plan_id) &
-                (Session.is_deleted == False)
-            ).execute()
-            
-        return True, 'План удалён', None
+        return True, 'Рекомендация сохранена', None
     except DoesNotExist:
-        return False, 'План не найден', None
+        return False, 'Запись дневника не найдена', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
-    
+
+
+def add_medical_recommendation(doctor_id, exam_id, text):
+    clean_text = text.strip()
+    if not clean_text:
+        return False, 'Текст рекомендации не может быть пустым', None
+    if len(clean_text) > 500:
+        return False, 'Текст не должен превышать 500 символов', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        exam = MedicalExam.get_by_id(exam_id)
+        
+        if exam.doctor_id != doctor_id:
+            return False, 'Доступ запрещён', None
+
+        with db.atomic():
+            Recommendation.create(
+                author=doctor_id,
+                athlete=exam.athlete_id,
+                linked_entity='медкарта',
+                linked_entity_id=exam_id,
+                text=clean_text
+            )
+
+        return True, 'Рекомендация подписана', None
+    except DoesNotExist:
+        return False, 'Осмотр не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+
+
 def add_recommendation_to_session(specialist_id, session_id, text):
     clean_text = text.strip()
     if not clean_text:
@@ -956,157 +923,8 @@ def add_recommendation_to_session(specialist_id, session_id, text):
         return False, 'Занятие не найдено', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
-    
-def get_athlete_medical_data_for_coach(specialist_id, athlete_id, exam_date=None, exam_type=None):
-    try:
-        if db.is_closed():
-            db.connect()
 
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна') &
-            (SpecialistBinding.is_deleted == False)
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
 
-        conditions = [MedicalExam.athlete == athlete_id]
-
-        if exam_date:
-            if exam_date > date.today():
-                return False, 'Дата не может быть в будущем', None
-            conditions.append(MedicalExam.exam_date == exam_date)  
-        
-        if exam_type and exam_type.strip():
-            conditions.append(MedicalExam.exam_type == exam_type.strip())
-
-        exams = MedicalExam.select().where(*conditions).order_by(MedicalExam.exam_date.desc())
-
-        result = []
-        for exam in exams:
-            metrics = MedicalMetric.select().where(
-                MedicalMetric.exam == exam
-            ).order_by(MedicalMetric.id.desc())
-
-            recommendations = Recommendation.select().where(
-                (Recommendation.linked_entity == 'медкарта') &
-                (Recommendation.linked_entity_id == exam.id)
-            ).order_by(Recommendation.id.desc())
-
-            doctor = exam.doctor
-            doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
-
-            result.append({ 
-                'exam_date': exam.exam_date,
-                'exam_type': exam.exam_type,
-                'doctor_fio': doctor_fio,
-                'doctor_email': doctor.email,
-                'metrics': list(metrics),
-                'recommendations': list(recommendations),
-                'exam': exam
-            })
-
-        return True, 'Медицинские данные загружены', result
-    except OperationalError as e:
-        return False, f"Ошибка подключения: {e}", None
-    
-def update_athlete_status(specialist_id, athlete_id, new_status):
-    clean_status = unicodedata.normalize('NFKC', new_status.strip().lower())
-    valid_statuses = ['здоров', 'устал', 'болен']
-    
-    if clean_status not in valid_statuses:
-        return False, f'Недопустимый статус: "{clean_status}"', None
-
-    try:
-        if db.is_closed():
-            db.connect()
-
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна')
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
-
-        specialist = User.get_by_id(specialist_id)
-        specialist_role = specialist.role
-
-        try:
-            last_status = ReadinessStatus.select().where(
-                ReadinessStatus.athlete == athlete_id
-            ).order_by(ReadinessStatus.id.desc()).get()
-
-            if last_status.initiator.role == 'врач':
-                if specialist_role == 'тренер' and last_status.current_status in ['болен', 'устал']:
-                    return False, 'Статус заблокирован врачом (спортсмен болен или устал).', None
-                
-        except DoesNotExist:
-            pass 
-
-        with db.atomic():
-            lock_status = 'заблокировано' if specialist_role == 'врач' else 'свободно'
-            
-            ReadinessStatus.create(
-                athlete=athlete_id,
-                initiator=specialist_id,
-                current_status=clean_status,
-                lock_status=lock_status  
-            )
-            
-        return True, 'Статус обновлён', None
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-    
-def delete_session(specialist_id, session_id):
-    try:
-        if db.is_closed():
-            db.connect()
-
-        session = Session.get_by_id(session_id)
-        
-        if session.plan.coach_id != specialist_id:
-            return False, 'Доступ запрещён', None
-
-        if session.date < date.today():
-            return False, 'Удаление возможно только до начала даты занятия', None
-
-        if session.status == 'выполнено':
-            return False, 'Нельзя удалить выполненное занятие', None
-
-        with db.atomic():
-            session.is_deleted = True
-            session.save()
-        return True, 'Занятие удалено', None
-    except DoesNotExist:
-        return False, 'Занятие не найдено', None
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-    
-def get_session_details(specialist_id, session_id):
-    try:
-        if db.is_closed():
-            db.connect()
-
-        session = Session.get_by_id(session_id)
-        
-        if session.plan.coach_id != specialist_id:
-            return False, 'Доступ запрещён', None
-
-        return True, 'Данные загружены', {
-            'id': session.id,
-            'plan_id': session.plan.id,
-            'plan_title': session.plan.title,
-            'date': session.date,
-            'time': session.time,
-            'activity_type': session.activity_type,
-            'duration': session.duration,
-            'status': session.status
-        }
-    except DoesNotExist:
-        return False, 'Занятие не найдено', None
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-    
 def add_session(specialist_id, plan_id, session_date, session_time, activity_type, duration):
     if duration <= 0:
         return False, 'Длительность должна быть больше 0', None
@@ -1147,195 +965,8 @@ def add_session(specialist_id, plan_id, session_date, session_time, activity_typ
         return False, 'План не найден', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
-    
-def get_athlete_diary(specialist_id, athlete_id, start_date=None, end_date=None, page=1, per_page=10):
-    try:
-        if db.is_closed():
-            db.connect()
 
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна')
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
 
-        if start_date is None or end_date is None:
-            today = date.today()
-            start_date = today.replace(day=1)
-            if today.month == 12:
-                end_date = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
-            else:
-                end_date = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
-
-        conditions = [
-            (TrainingDiary.athlete == athlete_id),
-            (TrainingDiary.is_deleted == False)
-        ]
-
-        if start_date and end_date:
-            conditions.append((TrainingDiary.date >= start_date) & (TrainingDiary.date <= end_date))
-        
-        query = TrainingDiary.select().where(*conditions).order_by(TrainingDiary.date.desc())
-        total = query.count()
-        entries = list(query.paginate(page, per_page))
-
-        result = [{
-            'id': e.id, 'date': e.date, 'activity_type': e.activity_type,
-            'duration': e.duration, 'steps': e.steps, 'sleep_hours': e.sleep_hours,
-            'fatigue': e.fatigue, 'mood': e.mood
-        } for e in entries]
-
-        return True, 'Дневник загружен', {
-            'entries': result, 'total': total, 'page': page, 'per_page': per_page
-        }
-    except OperationalError as e:
-        return False, f"Ошибка подключения: {e}", None
-    
-def add_diary_recommendation(specialist_id, entry_id, text):
-    clean_text = text.strip()
-    if not clean_text:
-        return False, 'Текст не может быть пустым', None
-    if len(clean_text) > 500:
-        return False, 'Текст не должен превышать 500 символов', None
-    try:
-        if db.is_closed():
-            db.connect()
-
-        entry = TrainingDiary.get_by_id(entry_id)
-        
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == entry.athlete_id) &
-            (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.status == 'активна')
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
-
-        with db.atomic():
-            Recommendation.create(
-                author=specialist_id,
-                athlete=entry.athlete_id,
-                linked_entity='дневник нагрузок', 
-                linked_entity_id=entry_id,
-                text=clean_text
-            )
-            
-        return True, 'Рекомендация сохранена', None
-    except DoesNotExist:
-        return False, 'Запись дневника не найдена', None
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-    
-def get_athlete_plan_for_doctor(doctor_id, athlete_id, start_date=None, end_date=None):
-    try:
-        if db.is_closed():
-            db.connect()
-
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == doctor_id) &
-            (SpecialistBinding.status == 'активна') &
-            (SpecialistBinding.is_deleted == False)
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
-
-        conditions = [
-            (TrainingPlan.athlete == athlete_id),
-            (TrainingPlan.is_deleted == False)
-        ]
-
-        if start_date and end_date:
-            conditions.append((TrainingPlan.start_date <= end_date) & (TrainingPlan.end_date >= start_date))
-
-        plans = TrainingPlan.select().where(*conditions).order_by(TrainingPlan.start_date.desc())
-
-        result = []
-        for plan in plans:
-            sessions = Session.select().where(
-                (Session.plan == plan) &
-                (Session.is_deleted == False)
-            ).order_by(Session.date.asc(), Session.time.asc())
-
-            result.append({
-                'plan_id': plan.id,
-                'title': plan.title,
-                'start_date': plan.start_date,
-                'end_date': plan.end_date,
-                'sessions': [{
-                    'id': s.id,
-                    'date': s.date,
-                    'time': s.time,
-                    'activity_type': s.activity_type,
-                    'duration': s.duration,
-                    'status': s.status
-                } for s in sessions]
-            })
-
-        return True, 'План загружен', result
-    except OperationalError as e:
-        return False, f"Ошибка подключения: {e}", None
-    
-def get_athlete_medical_records(doctor_id, athlete_id, exam_type=None):
-    try:
-        if db.is_closed():
-            db.connect()
-
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == doctor_id) &
-            (SpecialistBinding.status == 'активна')
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
-
-        conditions = [MedicalExam.athlete == athlete_id]
-        if exam_type:
-            conditions.append(MedicalExam.exam_type == exam_type)
-
-        exams = MedicalExam.select().where(*conditions).order_by(MedicalExam.exam_date.desc())
-
-        result = []
-        for exam in exams:
-            metrics = MedicalMetric.select().where(
-                MedicalMetric.exam == exam
-            ).order_by(MedicalMetric.id.desc())
-
-            recommendations = Recommendation.select().where(
-                (Recommendation.linked_entity == 'медкарта') &
-                (Recommendation.linked_entity_id == exam.id)
-            ).order_by(Recommendation.id.desc())
-
-            try:
-                doctor = exam.doctor
-                doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
-                doctor_email = doctor.email
-            except DoesNotExist:
-                doctor_fio = "Врач удалён"
-                doctor_email = "—"
-
-            result.append({
-                'exam_id': exam.id,
-                'exam_date': exam.exam_date,
-                'exam_type': exam.exam_type,
-                'doctor_fio': doctor_fio,
-                'doctor_email': doctor_email,
-                'metrics': [{
-                    'id': m.id,
-                    'type': m.metric_type,
-                    'value': m.value,
-                    'unit': m.unit,
-                    'ref_range': m.ref_range or '',
-                    'is_critical': bool(m.is_critical)
-                } for m in metrics],
-                'recommendations': [{
-                    'id': r.id,
-                    'text': r.text
-                } for r in recommendations]
-            })
-
-        return True, 'Медицинские данные загружены', result
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-    
 def create_medical_exam(athlete_id, doctor_id, date, exam_type, metrics):
     if date > date.today():
         return False, 'Дата осмотра не может быть в будущем', None
@@ -1378,80 +1009,128 @@ def create_medical_exam(athlete_id, doctor_id, date, exam_type, metrics):
         return True, 'Осмотр сохранён', {'exam_id': exam.id}
     except Exception as e:
         return False, f'Ошибка: {e}', None
-    
-def add_medical_metric(exam_id, doctor_id, metric_type, value, unit, ref_min=None, ref_max=None):
+
+
+def create_training_plan(specialist_id, athlete_id, start_date, end_date, title='Новый план'):
     try:
         if db.is_closed():
             db.connect()
 
-        exam = MedicalExam.get_by_id(exam_id)
-        
-        if exam.doctor_id != doctor_id:
-            return False, 'Доступ запрещён', None
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == specialist_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Нет прав на создание плана для этого спортсмена', None
 
-        is_critical = False
-        if value is not None and ref_min is not None and ref_max is not None:
-            try:
-                val = float(value)
-                if val < ref_min or val > ref_max:
-                    is_critical = True
-            except (ValueError, TypeError):
-                pass
+        if start_date < date.today():
+            return False, 'Дата начала не может быть в прошлом', None
+        if end_date <= start_date:
+            return False, 'Дата окончания должна быть позже даты начала', None
 
         with db.atomic():
-            metric, created = MedicalMetric.get_or_create(
-                exam=exam_id,
-                metric_type=metric_type,
-                defaults={
-                    'value': value,
-                    'unit': unit,
-                    'is_critical': is_critical
-                }
+            plan = TrainingPlan.create(
+                athlete=athlete_id,
+                coach=specialist_id,
+                title=title,
+                start_date=start_date,
+                end_date=end_date,
+                is_deleted=False
             )
-
-            if not created:
-                metric.value = value
-                metric.unit = unit
-                metric.is_critical = is_critical
-                metric.save()
-
-        return True, 'Показатель сохранён', {'is_critical': is_critical}
-    except DoesNotExist:
-        return False, 'Осмотр не найден', None
+        return True, 'План создан', {'plan_id': plan.id}
+    except IntegrityError as e:
+        return False, 'Ошибка целостности данных', None
     except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-    
-def add_medical_recommendation(doctor_id, exam_id, text):
-    clean_text = text.strip()
-    if not clean_text:
-        return False, 'Текст рекомендации не может быть пустым', None
-    if len(clean_text) > 500:
-        return False, 'Текст не должен превышать 500 символов', None
+        return False, f"Ошибка подключения: {e}", None
 
+
+def delete_session(specialist_id, session_id):
     try:
         if db.is_closed():
             db.connect()
 
-        exam = MedicalExam.get_by_id(exam_id)
+        session = Session.get_by_id(session_id)
         
-        if exam.doctor_id != doctor_id:
+        if session.plan.coach_id != specialist_id:
             return False, 'Доступ запрещён', None
 
-        with db.atomic():
-            Recommendation.create(
-                author=doctor_id,
-                athlete=exam.athlete_id,
-                linked_entity='медкарта',
-                linked_entity_id=exam_id,
-                text=clean_text
-            )
+        if session.date < date.today():
+            return False, 'Удаление возможно только до начала даты занятия', None
 
-        return True, 'Рекомендация подписана', None
+        if session.status == 'выполнено':
+            return False, 'Нельзя удалить выполненное занятие', None
+
+        with db.atomic():
+            session.is_deleted = True
+            session.save()
+        return True, 'Занятие удалено', None
     except DoesNotExist:
-        return False, 'Осмотр не найден', None
+        return False, 'Занятие не найдено', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
-    
+
+
+def delete_training_plan(specialist_id, plan_id):
+    try:
+        if db.is_closed():
+            db.connect()
+        plan = TrainingPlan.get_by_id(plan_id)
+        
+        if plan.coach_id != specialist_id:
+            return False, 'Доступ запрещён', None
+
+        if plan.end_date <= date.today():
+            return False, 'Удаление доступно только до окончания периода плана', None
+
+        with db.atomic():
+            plan.is_deleted = True
+            plan.save()
+            
+            Session.update(is_deleted=True).where(
+                (Session.plan == plan_id) &
+                (Session.is_deleted == False)
+            ).execute()
+            
+        return True, 'План удалён', None
+    except DoesNotExist:
+        return False, 'План не найден', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+
+
+def edit_session(specialist_id, session_id, date, time, activity_type, duration):
+    if duration <= 0:
+        return False, 'Длительность должна быть больше 0', None
+    try:
+        if db.is_closed():
+            db.connect()
+
+        session = Session.get_by_id(session_id)
+        
+        if session.plan.coach_id != specialist_id:
+            return False, 'Доступ запрещён', None
+
+        if session.status in ['выполнено', 'пропущено']:
+            return False, 'Занятие выполнено. Редактирование невозможно', None
+
+        plan = TrainingPlan.get_by_id(session.plan_id)
+        if date < plan.start_date or date > plan.end_date:
+            return False, f'Дата должна быть в рамках плана ({plan.start_date} — {plan.end_date})', None
+
+        with db.atomic():
+            session.date = date
+            session.time = time
+            session.activity_type = activity_type
+            session.duration = duration
+            session.save()
+            
+        return True, 'Занятие изменено', None
+    except DoesNotExist:
+        return False, 'Занятие не найдено', None
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+
+
 def generate_report(specialist_id, athlete_id, report_type, start_date, end_date, fmt='excel', save_dir='./reports', report_name='Отчёт'):
     try:
         if db.is_closed():
@@ -1758,161 +1437,118 @@ def generate_report(specialist_id, athlete_id, report_type, start_date, end_date
         import traceback; traceback.print_exc()
         return False, f'Ошибка генерации: {e}', None
 
-def remove_athlete_from_list(specialist_id, athlete_id):
+
+def get_athlete_medical_records(doctor_id, athlete_id, exam_date=None, exam_type=None):
     try:
         if db.is_closed():
             db.connect()
 
-        binding = SpecialistBinding.get(
+        if not SpecialistBinding.select().where(
+            (SpecialistBinding.athlete == athlete_id) &
+            (SpecialistBinding.specialist == doctor_id) &
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        conditions = [MedicalExam.athlete == athlete_id]
+
+        if exam_date:
+            conditions.append(MedicalExam.exam_date == exam_date)
+
+        if exam_type:
+            conditions.append(MedicalExam.exam_type == exam_type)
+
+        exams = MedicalExam.select().where(*conditions).order_by(MedicalExam.exam_date.desc())
+
+        result = []
+        for exam in exams:
+            metrics = MedicalMetric.select().where(
+                MedicalMetric.exam == exam
+            ).order_by(MedicalMetric.id.desc())
+
+            recommendations = Recommendation.select().where(
+                (Recommendation.linked_entity == 'медкарта') &
+                (Recommendation.linked_entity_id == exam.id)
+            ).order_by(Recommendation.id.desc())
+
+            try:
+                doctor = exam.doctor
+                doctor_fio = f"{doctor.last_name} {doctor.first_name} {doctor.middle_name or ''}".strip()
+                doctor_email = doctor.email
+            except DoesNotExist:
+                doctor_fio = "Врач удалён"
+                doctor_email = "—"
+
+            result.append({
+                'exam_id': exam.id,
+                'exam_date': exam.exam_date,
+                'exam_type': exam.exam_type,
+                'doctor_fio': doctor_fio,
+                'doctor_email': doctor_email,
+                'metrics': [{
+                    'id': m.id,
+                    'type': m.metric_type,
+                    'value': m.value,
+                    'unit': m.unit,
+                    'ref_range': m.ref_range or '',
+                    'is_critical': bool(m.is_critical)
+                } for m in metrics],
+                'recommendations': [{
+                    'id': r.id,
+                    'text': r.text
+                } for r in recommendations]
+            })
+
+        return True, 'Медицинские данные загружены', result
+    except OperationalError as e:
+        return False, f"Ошибка БД: {e}", None
+
+
+def update_athlete_status(specialist_id, athlete_id, new_status):
+    clean_status = unicodedata.normalize('NFKC', new_status.strip().lower())
+    valid_statuses = ['здоров', 'устал', 'болен']
+    
+    if clean_status not in valid_statuses:
+        return False, f'Недопустимый статус: "{clean_status}"', None
+
+    try:
+        if db.is_closed():
+            db.connect()
+
+        if not SpecialistBinding.select().where(
             (SpecialistBinding.athlete == athlete_id) &
             (SpecialistBinding.specialist == specialist_id) &
-            (SpecialistBinding.is_deleted == False)
-        )
+            (SpecialistBinding.status == 'активна')
+        ).exists():
+            return False, 'Спортсмен не закреплён за вами', None
+
+        specialist = User.get_by_id(specialist_id)
+        specialist_role = specialist.role
+
+        try:
+            last_status = ReadinessStatus.select().where(
+                ReadinessStatus.athlete == athlete_id
+            ).order_by(ReadinessStatus.id.desc()).get()
+
+            if last_status.initiator.role == 'врач':
+                if specialist_role == 'тренер' and last_status.current_status in ['болен', 'устал']:
+                    return False, 'Статус заблокирован врачом (спортсмен болен или устал).', None
+                
+        except DoesNotExist:
+            pass 
 
         with db.atomic():
-            binding.status = 'прекращена'
-            binding.is_deleted = True
-            binding.save()
-
-        return True, 'Спортсмен исключён из списка', None
-    except DoesNotExist:
-        return False, 'Привязка не найдена', None
+            lock_status = 'заблокировано' if specialist_role == 'врач' else 'свободно'
+            
+            ReadinessStatus.create(
+                athlete=athlete_id,
+                initiator=specialist_id,
+                current_status=clean_status,
+                lock_status=lock_status  
+            )
+            
+        return True, 'Статус обновлён', None
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
-    
-def get_session_recommendations(session_id):
-    try:
-        recommendations = Recommendation.select().where(
-            (Recommendation.linked_entity == 'тренировочный план') &
-            (Recommendation.linked_entity_id == session_id)
-        ).order_by(Recommendation.id.desc())
-        
-        result = []
-        for rec in recommendations:
-            author = User.get_by_id(rec.author_id)
-            result.append({
-                'text': rec.text,
-                'author_fio': f"{author.last_name} {author.first_name}".strip(),
-                'author_role': author.role
-            })
-        
-        return True, 'Рекомендации загружены', result
-    except DoesNotExist:
-        return False, 'Занятие не найдено', None
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
-    
-def get_recommendations_for_entry(entry_id):
-    try:
-        recs = Recommendation.select().where(
-            (Recommendation.linked_entity == 'дневник нагрузок') &
-            (Recommendation.linked_entity_id == entry_id)
-        ).order_by(Recommendation.id.desc())
-        
-        result = []
-        for rec in recs:
-            author = User.get_by_id(rec.author_id)
-            result.append({
-                'text': rec.text,
-                'author_fio': f"{author.last_name} {author.first_name}".strip(),
-                'author_role': author.role
-            })
-        return True, 'Загружены', result
-    except Exception as e:
-        return False, str(e), None
 
-def get_diary_entries(athlete_id, start_date=None, end_date=None, page=1, per_page=3, activity_type=None):
-    try:
-        
-        query = TrainingDiary.select().where(
-            (TrainingDiary.athlete_id == athlete_id) &
-            (TrainingDiary.is_deleted == False)
-        )
 
-        if start_date is not None:
-            query = query.where(TrainingDiary.date >= start_date)
-        if end_date is not None:
-            query = query.where(TrainingDiary.date <= end_date)
-        if activity_type is not None and activity_type.strip() != "":
-            query = query.where(TrainingDiary.activity_type == activity_type)
-
-        query = query.order_by(TrainingDiary.date.desc())
-
-        total = query.count()
-        offset = (page - 1) * per_page
-        entries = list(query.limit(per_page).offset(offset))
-
-        return True, "OK", {"entries": entries, "total": total}
-    except Exception as e:
-        print(f"Ошибка get_diary_entries: {e}")
-        return False, str(e), {"entries": [], "total": 0}
-
-def get_medical_filter_options(athlete_id):
-    try:
-        if db.is_closed():
-            db.connect()
-        types = (MedicalExam
-                 .select(MedicalExam.exam_type)
-                 .where(MedicalExam.athlete_id == athlete_id)
-                 .distinct()
-                 .order_by(MedicalExam.exam_type.asc()))
-        # Фильтруем пустые значения
-        return True, 'Ok', [t.exam_type for t in types if t.exam_type]
-    except Exception as e:
-        return False, str(e), []
-
-def get_diary_filter_options(athlete_id):
-    try:
-        if db.is_closed():
-            db.connect()
-        types = (TrainingDiary
-                 .select(TrainingDiary.activity_type)
-                 .where((TrainingDiary.athlete_id == athlete_id) & (TrainingDiary.is_deleted == False))
-                 .distinct()
-                 .order_by(TrainingDiary.activity_type.asc()))
-        return True, 'Ok', [t.activity_type for t in types if t.activity_type]
-    except Exception as e:
-        return False, str(e), []
-
-def get_athlete_filter_options(specialist_id):
-    try:
-        if db.is_closed():
-            db.connect()
-        
-        athlete_ids = list(
-            SpecialistBinding.select(SpecialistBinding.athlete_id)
-            .where(
-                (SpecialistBinding.specialist_id == specialist_id) & 
-                (SpecialistBinding.is_deleted == False)
-            )
-            .tuples()
-        )
-        if not athlete_ids:
-            return True, 'Ok', {'specializations': [], 'statuses': []}
-        
-        athlete_ids = [id[0] for id in athlete_ids]
-
-        specs = (User.select(User.specialization)
-                 .where((User.id << athlete_ids) & (User.specialization.is_null(False)))
-                 .distinct()
-                 .order_by(User.specialization.asc()))
-        spec_list = [s.specialization for s in specs if s.specialization]
-
-        latest_status_subquery = (
-            ReadinessStatus.select(
-                ReadinessStatus.athlete_id,
-                fn.MAX(ReadinessStatus.id).alias('max_id')
-            )
-            .where(ReadinessStatus.athlete_id << athlete_ids)
-            .group_by(ReadinessStatus.athlete_id)
-        )
-
-        statuses = (ReadinessStatus.select(ReadinessStatus.current_status)
-                    .where(ReadinessStatus.id << [s.max_id for s in latest_status_subquery])
-                    .distinct()
-                    .order_by(ReadinessStatus.current_status.asc()))
-        stat_list = [s.current_status for s in statuses if s.current_status]
-
-        return True, 'Ok', {'specializations': spec_list, 'statuses': stat_list}
-    except Exception as e:
-        return False, str(e), {'specializations': [], 'statuses': []}

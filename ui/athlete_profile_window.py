@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QFont, QPainter, QPainterPath
 from PyQt6.QtCore import Qt
 
-
 class AthleteNavBar(QWidget):
     def __init__(self, active_tab, on_tab, viewer_role):
         super().__init__()
@@ -82,7 +81,6 @@ class AthleteNavBar(QWidget):
         spacer.setFixedWidth(60)
         layout.addWidget(spacer)
 
-
 class AthleteProfileWindow(QMainWindow):
     def __init__(self, viewer_data, athlete_data, on_unbound=None, on_status_changed=None):
         super().__init__()
@@ -151,7 +149,6 @@ class AthleteProfileWindow(QMainWindow):
 
         self._clear_content()
 
-        # ✅ Создаем новый вид
         if tab_key == "profile":
             self._show_profile()
         elif tab_key == "athlete_training_coach":

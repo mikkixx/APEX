@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont  
 from ui.base_window import BaseWindow
 from core.operations import get_training_plan, update_session_status, sync_overdue_sessions
-from datetime import date, timedelta
+from datetime import date
 
 class TrainingPlanWindow(BaseWindow):
     active_tab = "training"

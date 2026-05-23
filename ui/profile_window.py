@@ -6,7 +6,6 @@ from PyQt6.QtGui import QPixmap, QFont, QPainter, QPainterPath
 from PyQt6.QtCore import Qt
 from ui.base_window import BaseWindow
 
-
 class ProfileWindow(BaseWindow):
     active_tab = "profile"
 

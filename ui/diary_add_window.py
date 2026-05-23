@@ -42,7 +42,6 @@ class DiaryAddWindow(QWidget):
         layout.addWidget(title)
         layout.addSpacing(8)
 
-        # Date
         layout.addWidget(QLabel("Дата:"))
         self.date_edit = QDateEdit(calendarPopup=True)
         self.date_edit.setFixedHeight(48)

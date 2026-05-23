@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from core.operations import add_diary_recommendation, get_recommendations_for_entry
 
-
 class DiaryDetailSpecialistWindow(QWidget):
     def __init__(self, entry, viewer_data, on_close=None):
         super().__init__()

@@ -164,7 +164,7 @@ class AthleteTrainingCoach:
     def _open_session(self, session):
         from ui.session_coach_window import SessionCoachWindow
         self.session_win = SessionCoachWindow(
-            self.specialist_data, self.athlete_data, session
+            self.specialist_data, self.athlete_data, session, on_close=self._refresh
         )
         self.session_win.show()
 

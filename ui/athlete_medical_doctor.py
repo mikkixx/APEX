@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QFrame, QComboBox,
-    QTextEdit, QMessageBox, QDialog
+    QTextEdit, QMessageBox, QDialog, QDateEdit
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
 from core.operations import get_athlete_medical_records, get_medical_filter_options
 
@@ -14,6 +14,7 @@ class AthleteMedicalDoctor:
         self.layout = layout
         self.page = 1
         self.exam_type_filter = None
+        self.exam_date = None  
         self._all_exams = []
 
     def build(self):
@@ -54,6 +55,16 @@ class AthleteMedicalDoctor:
         filter_lbl.setStyleSheet("font-size: 20px; font-weight: bold;")
         filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
+
+        date_lbl = QLabel("Дата:")
+        date_lbl.setStyleSheet("font-size: 20px; border: none; background: transparent;")
+        filter_row.addWidget(date_lbl)
+
+        self.date_filter = QDateEdit(calendarPopup=True)
+        self.date_filter.setFixedSize(160, 50)
+        self.date_filter.setDate(QDate.currentDate())
+        filter_row.addWidget(self.date_filter)
+        filter_row.addSpacing(16)
 
         self.type_combo = QComboBox()
         self.type_combo.setFixedWidth(240)
@@ -119,18 +130,20 @@ class AthleteMedicalDoctor:
         self.type_combo.setCurrentIndex(idx if idx >= 0 else 0)
 
     def _apply(self):
+        self.exam_date = self.date_filter.date().toPyDate()
+        
         t = self.type_combo.currentText()
         self.exam_type_filter = t if t not in ("Все типы", "Типы не найдены") else None
         self.page = 1
         self._refresh()
 
     def _refresh(self):
-        # Загружаем ВСЕ осмотры с бэкенда
         ok, msg, exams = get_athlete_medical_records(
             self.specialist_data['id'],
-            self.athlete_data['id']
+            self.athlete_data['id'],
+            exam_date=self.exam_date,    
+            exam_type=self.exam_type_filter
         )
-
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
             if item.widget():
