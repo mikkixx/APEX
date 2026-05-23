@@ -1,11 +1,9 @@
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QWidget, QFrame, QComboBox, QTextEdit, QMessageBox
+    QScrollArea, QWidget, QFrame, QComboBox, QTextEdit
 )
 from PyQt6.QtCore import Qt
 from core.operations import get_medical_data, get_medical_filter_options
-
-PER_PAGE = 1
 
 class AthleteMedicalCoach:
     """Coach view: read-only medical card for athlete."""
@@ -21,7 +19,7 @@ class AthleteMedicalCoach:
         layout = self.layout
 
         title = QLabel("МЕДИЦИНСКИЕ ПОКАЗАТЕЛИ")
-        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px; border: none; background: transparent;")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
         layout.addSpacing(12)
@@ -65,7 +63,6 @@ class AthleteMedicalCoach:
         self.scroll_area.setWidget(self.scroll_widget)
         oc.addWidget(self.scroll_area)
 
-        # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
@@ -84,8 +81,6 @@ class AthleteMedicalCoach:
         oc.addLayout(page_row)
 
         layout.addWidget(filter_card)
-        
-        # ✅ Загружаем типы перед рендером
         self._load_exam_types()
         self._refresh()
 
@@ -118,7 +113,7 @@ class AthleteMedicalCoach:
         if not self._exams:
             empty = QLabel("Медосмотров не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; border: none; background: transparent;")
             self.scroll_layout.addWidget(empty)
             self.page_label.setText("0 страниц")
         else:
@@ -136,17 +131,21 @@ class AthleteMedicalCoach:
         cl.setSpacing(6)
 
         title_lbl = QLabel(f"Медицинский осмотр ({exam['exam_date']})")
-        title_lbl.setStyleSheet("font-size: 22px; font-weight: bold; margin-bottom: 4px;")
+        title_lbl.setStyleSheet("font-size: 24px; font-weight: bold; border: none; background: transparent;")
         cl.addWidget(title_lbl)
 
         def row(label, value, critical=False):
             r = QHBoxLayout()
-            lbl_color = "#cc0000" if critical else "#1a1a1a"
-            val_color = "#cc0000" if critical else "#777"
+            is_crit = bool(critical)
+            lbl_color = "#cc0000" if is_crit else "#1a1a1a"
+            val_color = "#cc0000" if is_crit else "#777"
+            
             lbl = QLabel(f"{label}:")
-            lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {lbl_color};")
+            lbl.setStyleSheet(f"QLabel {{ font-weight: bold; font-size: 20px; color: {lbl_color}; border: none; background: transparent; }}")
+            
             val = QLabel(str(value))
-            val.setStyleSheet(f"font-size: 20px; color: {val_color};")
+            val.setStyleSheet(f"QLabel {{ font-size: 20px; color: {val_color}; border: none; background: transparent; }}")
+            
             r.addWidget(lbl); r.addSpacing(4); r.addWidget(val); r.addStretch()
             return r
 
@@ -154,34 +153,62 @@ class AthleteMedicalCoach:
         cl.addLayout(row("Врач", f"{exam['doctor_fio']}, {exam['doctor_email']}"))
 
         mt = QLabel("Показатели")
-        mt.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 8px;")
+        mt.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 8px; border: none; background: transparent;")
         mt.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         cl.addWidget(mt)
 
         for m in exam.get('metrics', []):
             display = f"{m['value']} {m['unit']}"
-            if m.get('is_critical'):
+            is_crit = bool(m.get('is_critical', False))
+            if is_crit:
                 display += " (критично)"
-            cl.addLayout(row(m['type'], display, critical=m.get('is_critical', False)))
+            cl.addLayout(row(m['type'], display, critical=is_crit))
+
+        # ✅ ЗАГОЛОВОК РЕКОМЕНДАЦИЙ (Всегда виден, 24px)
+        rec_title = QLabel("Рекомендации врача")
+        rec_title.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 10px; border: none; background: transparent;")
+        rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        cl.addWidget(rec_title)
 
         recs = exam.get('recommendations', [])
         if recs:
-            rec_title = QLabel("Рекомендации врача")
-            rec_title.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 10px;")
-            rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            cl.addWidget(rec_title)
-            for rec in recs:
-                rec_box = QTextEdit()
-                rec_box.setPlainText(rec.text if hasattr(rec, 'text') else str(rec))
-                rec_box.setReadOnly(True)
-                rec_box.setFixedHeight(80)
-                rec_box.setStyleSheet("""
-                    QTextEdit { border: 1px solid #e0e0e0; border-radius: 10px;
-                        background: #f9f9f9; padding: 8px; font-size: 20px; color: #444; }
-                """)
-                cl.addWidget(rec_box)
+            rec = recs[0]
+            r_text = rec['text'] if isinstance(rec, dict) else rec.text
+            
+            rec_box = QTextEdit()
+            rec_box.setPlainText(r_text)
+            rec_box.setReadOnly(True)
+            rec_box.setFixedHeight(80)
+            rec_box.setStyleSheet("""
+                QTextEdit {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 20px;
+                    background: #ffffff;
+                    padding: 8px;
+                    font-size: 20px;
+                    color: #333;
+                }
+            """)
+            cl.addWidget(rec_box)
+        else:
+            # ✅ Та же рамка, белый фон, скругление 20px, текст слева
+            no_rec_box = QLabel("Рекомендаций нет.")
+            no_rec_box.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            no_rec_box.setStyleSheet("""
+                QLabel {
+                    background: #ffffff;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 20px;
+                    padding: 8px;
+                    font-size: 20px;
+                    color: #888;
+                }
+            """)
+            no_rec_box.setFixedHeight(80)
+            cl.addWidget(no_rec_box)
 
         self.scroll_layout.addWidget(card)
+
 
     def _prev(self):
         if self.page > 1:

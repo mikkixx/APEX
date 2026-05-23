@@ -120,25 +120,32 @@ class AthleteProfileWindow(QMainWindow):
 
         self._show_profile()
 
-    def _clear_content(self):
-        while self.content_layout.count():
-            item = self.content_layout.takeAt(0)
+    def _clear_layout_recursive(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+                item.widget().setParent(None)
+            elif item.layout():
+                self._clear_layout_recursive(item.layout())
+
+    def _clear_content(self):
+        # ✅ Полная синхронная очистка вложенных виджетов и макетов
+        self._clear_layout_recursive(self.content_layout)
+        # ✅ Принудительно обрабатываем события, чтобы виджеты удалились до отрисовки новых
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
 
     def _switch_tab(self, tab_key):
         if tab_key == self.current_tab:
             return
 
         self.current_tab = tab_key
-
-        # Определяем базовый ключ для подсветки активной вкладки в навбаре
         base_tab = "profile"
         if "training" in tab_key: base_tab = "training"
         elif "diary" in tab_key:  base_tab = "diary"
         elif "medical" in tab_key: base_tab = "medical"
 
-        # Перестраиваем навбар с новой активной вкладкой
         self._main_layout.removeWidget(self.navbar)
         self.navbar.deleteLater()
         self.navbar = AthleteNavBar(
@@ -147,48 +154,32 @@ class AthleteProfileWindow(QMainWindow):
             viewer_role=self.viewer_data.get('role', '')
         )
         self._main_layout.insertWidget(0, self.navbar)
+        
+        # ✅ Сначала полностью очищаем контент
         self._clear_content()
 
-        # Маршрутизация — всё рендерится ВНУТРИ content_layout этого окна.
-        # ВАЖНО: view сохраняется в self._current_view чтобы GC не уничтожил
-        # объект вместе со всеми его сигналами и слотами — иначе кнопки не работают.
+        # ✅ Создаем новый вид
         if tab_key == "profile":
-            self._current_view = None
             self._show_profile()
-
         elif tab_key == "athlete_training_coach":
             from ui.athlete_training_coach import AthleteTrainingCoach
-            self._current_view = AthleteTrainingCoach(
-                self.viewer_data, self.athlete_data, self.content_layout, parent_widget=self
-            )
+            self._current_view = AthleteTrainingCoach(self.viewer_data, self.athlete_data, self.content_layout, parent_widget=self)
             self._current_view.build()
-
         elif tab_key == "athlete_training_doctor":
             from ui.athlete_training_doctor import AthleteTrainingDoctor
-            self._current_view = AthleteTrainingDoctor(
-                self.viewer_data, self.athlete_data, self.content_layout
-            )
+            self._current_view = AthleteTrainingDoctor(self.viewer_data, self.athlete_data, self.content_layout)
             self._current_view.build()
-
         elif tab_key == "athlete_diary_specialist":
             from ui.athlete_diary_specialist import AthleteDiarySpecialist
-            self._current_view = AthleteDiarySpecialist(
-                self.viewer_data, self.athlete_data, self.content_layout
-            )
+            self._current_view = AthleteDiarySpecialist(self.viewer_data, self.athlete_data, self.content_layout)
             self._current_view.build()
-
         elif tab_key == "athlete_medical_coach":
             from ui.athlete_medical_coach import AthleteMedicalCoach
-            self._current_view = AthleteMedicalCoach(
-                self.viewer_data, self.athlete_data, self.content_layout, parent_widget=self
-            )
+            self._current_view = AthleteMedicalCoach(self.viewer_data, self.athlete_data, self.content_layout, parent_widget=self)
             self._current_view.build()
-
         elif tab_key == "athlete_medical_doctor":
             from ui.athlete_medical_doctor import AthleteMedicalDoctor
-            self._current_view = AthleteMedicalDoctor(
-                self.viewer_data, self.athlete_data, self.content_layout
-            )
+            self._current_view = AthleteMedicalDoctor(self.viewer_data, self.athlete_data, self.content_layout)
             self._current_view.build()
 
     def _show_popup(self, title, text, icon, ok_text="ОК"):

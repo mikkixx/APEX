@@ -1312,7 +1312,7 @@ def get_athlete_medical_records(doctor_id, athlete_id):
                 'recommendations': [{
                     'id': r.id,
                     'text': r.text,
-                    'created_at': r.created_at
+                    # ✅ Убрали несуществующее поле created_at
                 } for r in recommendations]
             })
 
@@ -1320,64 +1320,49 @@ def get_athlete_medical_records(doctor_id, athlete_id):
     except OperationalError as e:
         return False, f"Ошибка БД: {e}", None
     
-def create_medical_exam(doctor_id, athlete_id, exam_date, exam_type):
-    if not exam_type or not exam_type.strip():
-        return False, 'Укажите тип осмотра', None
-    if exam_date > date.today():
-        return False, 'Дата не может быть в будущем', None
-
+def create_medical_exam(athlete_id, doctor_id, date, exam_type, metrics):
     try:
         if db.is_closed():
             db.connect()
 
-        if not SpecialistBinding.select().where(
-            (SpecialistBinding.athlete == athlete_id) &
-            (SpecialistBinding.specialist == doctor_id) &
-            (SpecialistBinding.status == 'активна')
-        ).exists():
-            return False, 'Спортсмен не закреплён за вами', None
-
-        existing = MedicalExam.select().where(
-            (MedicalExam.athlete == athlete_id) &
-            (MedicalExam.exam_date == exam_date) &
-            (MedicalExam.exam_type == exam_type.strip())
-        ).exists()
-
-        if existing:
-            return False, 'Осмотр этого типа уже существует за указанную дату', None
-
         with db.atomic():
+            # 1. Создаем запись об осмотре
             exam = MedicalExam.create(
                 athlete=athlete_id,
                 doctor=doctor_id,
-                exam_date=exam_date,
-                exam_type=exam_type.strip(),
+                exam_date=date,
+                exam_type=exam_type,
                 is_deleted=False
             )
 
-            base_metrics = [
-                ('Пульс', 'уд/мин'),
-                ('Давление (систолическое)', 'мм рт.ст.'),
-                ('Давление (диастолическое)', 'мм рт.ст.'),
-                ('Вес', 'кг'),
-                ('Рост', 'см')
-            ]
-
-            for metric_type, unit in base_metrics:
+            # 2. Добавляем показатели
+            for m in metrics:
+                # ✅ Автоматическая проверка критичности на основе нормы
+                is_crit = False
+                ref = m.get('ref_range', '')
+                val = m.get('value', 0)
+                
+                # Если есть дефис, значит это диапазон (например 4.0-4.6)
+                if '-' in str(ref):
+                    try:
+                        low, high = map(float, ref.split('-'))
+                        if val < low or val > high:
+                            is_crit = True
+                    except ValueError:
+                        pass
+                
                 MedicalMetric.create(
-                    exam=exam.id,
-                    metric_type=metric_type,
-                    value=0.0,  
-                    unit=unit,
-                    ref_range='', 
-                    is_critical=False
+                    exam=exam,
+                    metric_type=m['metric_type'],
+                    value=val,
+                    unit=m.get('unit', ''),
+                    ref_range=ref,        # ✅ Сохраняем норму в БД
+                    is_critical=is_crit   # ✅ Сохраняем вычисленный статус
                 )
 
-        return True, 'Карточка осмотра создана', {'exam_id': exam.id}
-    except IntegrityError:
-        return False, 'Ошибка целостности данных', None
-    except OperationalError as e:
-        return False, f"Ошибка БД: {e}", None
+        return True, 'Осмотр сохранён', {'exam_id': exam.id}
+    except Exception as e:
+        return False, f'Ошибка: {e}', None
     
 def add_medical_metric(exam_id, doctor_id, metric_type, value, unit, ref_min=None, ref_max=None):
     try:

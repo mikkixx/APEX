@@ -7,8 +7,6 @@ from PyQt6.QtCore import Qt, QDate
 from ui.base_window import BaseWindow
 from core.operations import get_medical_data, get_medical_filter_options
 
-PER_PAGE = 1
-
 class MedicalWindow(BaseWindow):
     active_tab = "medical"
 
@@ -23,7 +21,7 @@ class MedicalWindow(BaseWindow):
         layout = self._content_layout
 
         title = QLabel("МЕДКАРТА")
-        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
+        title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px; border: none; background: transparent;")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
         layout.addSpacing(12)
@@ -44,7 +42,10 @@ class MedicalWindow(BaseWindow):
         filter_row.addWidget(filter_lbl)
         filter_row.addStretch()
 
-        filter_row.addWidget(QLabel("Дата:"))
+        date_lbl = QLabel("Дата:")
+        date_lbl.setStyleSheet("font-size: 20px; border: none; background: transparent;")
+        filter_row.addWidget(date_lbl)
+        
         self.date_filter = QDateEdit(calendarPopup=True)
         self.date_filter.setFixedSize(160, 50)
         self.date_filter.setDate(QDate.currentDate())
@@ -66,7 +67,6 @@ class MedicalWindow(BaseWindow):
         filter_row.addWidget(apply_btn)
         filter_layout_outer.addLayout(filter_row)
 
-        # Scroll Area
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -77,7 +77,6 @@ class MedicalWindow(BaseWindow):
         self.scroll_area.setWidget(self.scroll_widget)
         filter_layout_outer.addWidget(self.scroll_area)
 
-        # Pagination
         page_row = QHBoxLayout()
         page_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.prev_btn = QPushButton("←")
@@ -85,7 +84,7 @@ class MedicalWindow(BaseWindow):
         self.prev_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 24px; padding: 0px; } QPushButton:hover { color: #555; }")
         self.prev_btn.clicked.connect(self._prev_page)
         self.page_label = QLabel("1 страница из 1")
-        self.page_label.setStyleSheet("font-size: 20px;  ")
+        self.page_label.setStyleSheet("font-size: 20px; border: none; background: transparent;")
         self.next_btn = QPushButton("→")
         self.next_btn.setFixedSize(44, 44)
         self.next_btn.setStyleSheet("QPushButton { background: transparent; color: #1a1a1a; border: none; font-size: 24px; padding: 0px; } QPushButton:hover { color: #555; }")
@@ -96,14 +95,10 @@ class MedicalWindow(BaseWindow):
         filter_layout_outer.addLayout(page_row)
 
         layout.addWidget(filter_card)
-
-        # ✅ 1. Сначала грузим опции фильтров (независимо от данных)
         self._load_exam_types()
-        # ✅ 2. Потом грузим данные
         self._refresh()
 
     def _load_exam_types(self):
-        """Загружает типы осмотров из БД один раз при старте"""
         ok, msg, types = get_medical_filter_options(self.user_data['id'])
         if ok and types:
             self.type_combo.clear()
@@ -115,7 +110,6 @@ class MedicalWindow(BaseWindow):
     def _apply_filter(self):
         self.page = 1
         self.exam_date = self.date_filter.date().toPyDate()
-        
         t = self.type_combo.currentText()
         self.exam_type_filter = t if t != "Все типы" else None
         self._refresh()
@@ -142,14 +136,13 @@ class MedicalWindow(BaseWindow):
         if total == 0:
             empty = QLabel("Медицинских осмотров не найдено.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px;")
+            empty.setStyleSheet("color: #888; font-size: 20px; margin: 20px; border: none; background: transparent;")
             self.scroll_layout.addWidget(empty)
             self.page_label.setText("0 страниц")
         else:
             idx = min(self.page - 1, total - 1)
             exam = self._all_exams[idx]
             self._render_exam(exam)
-
             self.page_label.setText(f"{self.page} страница из {total}")
             self.prev_btn.setEnabled(self.page > 1)
             self.next_btn.setEnabled(self.page < total)
@@ -162,7 +155,7 @@ class MedicalWindow(BaseWindow):
         cl.setSpacing(6)
 
         title_lbl = QLabel(f"Медицинский осмотр ({exam['exam_date']})")
-        title_lbl.setStyleSheet("font-size: 22px; font-weight: bold; margin-bottom: 4px;")
+        title_lbl.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 4px; border: none; background: transparent;")
         cl.addWidget(title_lbl)
 
         def row(label, value, critical=False):
@@ -170,8 +163,10 @@ class MedicalWindow(BaseWindow):
             lbl_color = "#cc0000" if critical else "#1a1a1a"
             val_color = "#cc0000" if critical else "#777"
             lbl = QLabel(f"{label}:")
+            # ✅ Без рамок
             lbl.setStyleSheet(f"font-weight: bold; font-size: 20px; color: {lbl_color}; border: none; background: transparent;")
             val = QLabel(str(value))
+            # ✅ Без рамок
             val.setStyleSheet(f"font-size: 20px; color: {val_color}; border: none; background: transparent;")
             r.addWidget(lbl); r.addSpacing(4); r.addWidget(val); r.addStretch()
             return r
@@ -180,7 +175,7 @@ class MedicalWindow(BaseWindow):
         cl.addLayout(row("Врач", f"{exam['doctor_fio']}, {exam['doctor_email']}"))
 
         metrics_title = QLabel("Показатели")
-        metrics_title.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 8px;")
+        metrics_title.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 8px; border: none; background: transparent;")
         metrics_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         cl.addWidget(metrics_title)
 
@@ -190,22 +185,49 @@ class MedicalWindow(BaseWindow):
                 display += " (критично)"
             cl.addLayout(row(m['type'], display, critical=m.get('is_critical', False)))
 
+        # ✅ ЗАГОЛОВОК РЕКОМЕНДАЦИЙ
+        rec_title = QLabel("Рекомендации врача")
+        rec_title.setStyleSheet("font-size: 24px; font-weight: bold; margin-top: 10px; border: none; background: transparent;")
+        rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        cl.addWidget(rec_title)
+
         recs = exam.get('recommendations', [])
         if recs:
-            rec_title = QLabel("Рекомендации врача")
-            rec_title.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 10px;")
-            rec_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            cl.addWidget(rec_title)
-            for rec in recs:
-                rec_box = QTextEdit()
-                rec_box.setPlainText(rec.text if hasattr(rec, 'text') else str(rec))
-                rec_box.setReadOnly(True)
-                rec_box.setFixedHeight(80)
-                rec_box.setStyleSheet("""
-                    QTextEdit { border: 1px solid #e0e0e0; border-radius: 10px;
-                        background: #f9f9f9; padding: 8px; font-size: 20px; color: #444; }
-                """)
-                cl.addWidget(rec_box)
+            rec = recs[0]
+            r_text = rec['text'] if isinstance(rec, dict) else rec.text
+            
+            rec_box = QTextEdit()
+            rec_box.setPlainText(r_text)
+            rec_box.setReadOnly(True)
+            rec_box.setFixedHeight(80)
+            # ✅ ✅ Рамка и фон возвращены для рекомендаций
+            rec_box.setStyleSheet("""
+                QTextEdit {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 20px;
+                    background: #ffffff;
+                    padding: 8px;
+                    font-size: 20px;
+                    color: #333;
+                }
+            """)
+            cl.addWidget(rec_box)
+        else:
+            # ✅ Рамка и фон возвращены для заглушки
+            no_rec_box = QLabel("Рекомендаций нет.")
+            no_rec_box.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            no_rec_box.setStyleSheet("""
+                QLabel {
+                    background: #ffffff;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 20px;
+                    padding: 8px;
+                    font-size: 20px;
+                    color: #888;
+                }
+            """)
+            no_rec_box.setFixedHeight(80)
+            cl.addWidget(no_rec_box)
 
         self.scroll_layout.addWidget(exam_card)
 
