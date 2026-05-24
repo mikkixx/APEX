@@ -1,3 +1,4 @@
+from utils import resource_path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QComboBox, QMessageBox, QScrollArea
@@ -32,7 +33,7 @@ class RegisterWindow(QWidget):
         root.setSpacing(0)
 
         logo = QLabel()
-        pix = QPixmap("img/logo.png")
+        pix = QPixmap(resource_path("img/logo.png"))
         if not pix.isNull():
             logo.setPixmap(pix.scaledToHeight(56, Qt.TransformationMode.SmoothTransformation))
         else:

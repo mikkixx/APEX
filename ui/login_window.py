@@ -1,3 +1,4 @@
+from utils import resource_path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QMessageBox
@@ -21,7 +22,7 @@ class LoginWindow(QWidget):
         top.setContentsMargins(0, 32, 0, 0)
         top.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         logo = QLabel()
-        pix = QPixmap("img/logo.png")
+        pix = QPixmap(resource_path("img/logo.png"))
         if not pix.isNull():
             logo.setPixmap(pix.scaledToHeight(60, Qt.TransformationMode.SmoothTransformation))
         else:

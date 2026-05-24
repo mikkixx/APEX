@@ -1,3 +1,4 @@
+import sys
 import re
 import bcrypt
 from peewee import fn, DoesNotExist, IntegrityError, OperationalError
@@ -6,6 +7,20 @@ from db.models import User, ReadinessStatus, TrainingDiary, Recommendation, Medi
 from db.connection import db
 import os
 import unicodedata
+
+import sys as _sys
+
+def _get_reports_dir():
+    if hasattr(_sys, '_MEIPASS'):
+        base = _sys.executable.replace(_sys.executable.split('\\')[-1], '')
+    else:
+        import os as _os
+        base = _os.path.abspath('.')
+    import os as _os
+    path = _os.path.join(base, 'reports')
+    _os.makedirs(path, exist_ok=True)
+    return path
+
 
 def _is_valid_email(email: str) -> bool:
     return bool(re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email))
@@ -1131,7 +1146,9 @@ def edit_session(specialist_id, session_id, date, time, activity_type, duration)
         return False, f"Ошибка БД: {e}", None
 
 
-def generate_report(specialist_id, athlete_id, report_type, start_date, end_date, fmt='excel', save_dir='./reports', report_name='Отчёт'):
+def generate_report(specialist_id, athlete_id, report_type, start_date, end_date, fmt='excel', save_dir=None, report_name='Отчёт'):
+    if save_dir is None:
+        save_dir = _get_reports_dir()
     try:
         if db.is_closed():
             db.connect()

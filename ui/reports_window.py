@@ -1,3 +1,4 @@
+from utils import resource_path, reports_dir
 import os
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -180,7 +181,7 @@ class ReportsWindow(SpecialistBaseWindow):
         fmt_row.addStretch()
         outer_layout.addLayout(fmt_row)
 
-        self.path_input = ClickableLineEdit(os.path.abspath("./reports"))
+        self.path_input = ClickableLineEdit(reports_dir())
         self.path_input.setReadOnly(True)
         self.path_input.setFixedHeight(FIELD_H)
         self.path_input.setStyleSheet(INPUT_STYLE)
@@ -220,7 +221,7 @@ class ReportsWindow(SpecialistBaseWindow):
     def _browse_path(self):
         folder = QFileDialog.getExistingDirectory(
             self, "Выберите папку для сохранения",
-            self.path_input.text() or os.path.abspath("./reports")
+            self.path_input.text() or reports_dir()
         )
         if folder:
             self.path_input.setText(folder)

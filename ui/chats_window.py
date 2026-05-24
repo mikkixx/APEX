@@ -1,3 +1,4 @@
+from utils import resource_path
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QFrame, QTextEdit,
@@ -236,7 +237,7 @@ class ChatsWindow(BaseWindow):
         if p.get('photo_path'):
             pix = _make_round_pixmap(p['photo_path'], 44)
         if pix is None:
-            pix = _make_round_pixmap("img/avatar.png", 44)
+            pix = _make_round_pixmap(resource_path("img/avatar.png"), 44)
         if pix:
             self.partner_avatar.setPixmap(pix)
             self.partner_avatar.setStyleSheet("")

@@ -1,3 +1,4 @@
+from utils import resource_path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QMessageBox, QSizePolicy,
@@ -23,7 +24,7 @@ class AthleteNavBar(QWidget):
         layout.setSpacing(0)
 
         logo_label = QLabel()
-        pix = QPixmap("img/logo-profile.png")
+        pix = QPixmap(resource_path("img/logo-profile.png"))
         if not pix.isNull():
             logo_label.setPixmap(pix.scaledToHeight(60, Qt.TransformationMode.SmoothTransformation))
         else:

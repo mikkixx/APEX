@@ -1,3 +1,4 @@
+from utils import resource_path
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -29,7 +30,7 @@ class NavBar(QWidget):
         layout.setSpacing(0)
 
         logo_label = QLabel()
-        logo_pix = QPixmap("img/logo.png")
+        logo_pix = QPixmap(resource_path("img/logo.png"))
         if not logo_pix.isNull():
             logo_label.setPixmap(logo_pix.scaledToHeight(44, Qt.TransformationMode.SmoothTransformation))
         else:

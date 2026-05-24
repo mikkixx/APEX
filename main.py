@@ -1,12 +1,17 @@
 import sys
+import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFontDatabase, QFont
 from ui.login_window import LoginWindow
 
+
+from utils import resource_path, reports_dir
+
+
 def main():
     app = QApplication(sys.argv)
 
-    font_id = QFontDatabase.addApplicationFont("fonts/Alegreya-Regular.ttf")
+    font_id = QFontDatabase.addApplicationFont(resource_path("fonts/Alegreya-Regular.ttf"))
     if font_id != -1:
         font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
         app.setFont(QFont(font_family, 11))
@@ -117,6 +122,7 @@ def main():
     window = LoginWindow()
     window.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
