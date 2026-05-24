@@ -133,8 +133,8 @@ APEX/
 ### 1. Клонировать репозиторий
 
 ```bash
-git clone https://github.com/your-username/apex.git
-cd apex
+git clone https://github.com/mikkixx/APEX.git
+cd APEX
 ```
 
 ### 2. Создать виртуальное окружение
