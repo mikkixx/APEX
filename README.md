@@ -97,8 +97,8 @@ APEX/
     ├── logo.png
     ├── logo-profile.png
     ├── avatar.png
-    ├── ok.png
-    └── profile.png
+    └── ok.png
+    
 ```
 
 ---
