@@ -59,6 +59,7 @@
 APEX/
 ├── main.py                  # Точка входа, глобальные стили
 ├── utils.py                 # Вспомогательные функции (пути к ресурсам)
+├── requirements.txt         # Зависимости
 ├── db/
 │   ├── connection.py        # Подключение к MySQL
 │   └── models.py            # Модели данных (Peewee ORM)
@@ -150,7 +151,7 @@ source .venv/bin/activate   # macOS / Linux
 ### 3. Установить зависимости
 
 ```bash
-pip install PyQt6 peewee pymysql bcrypt openpyxl reportlab pyinstaller
+pip install -r requirements.txt
 ```
 
 ### 4. Настроить базу данных

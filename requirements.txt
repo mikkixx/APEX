@@ -1,6 +1,7 @@
-PyQt6>=6.4.0
-Peewee>=3.16.0
-PyMySQL>=1.0.2
-bcrypt>=4.0.1
-openpyxl>=3.1.0
-reportlab>=4.0.0
+PyQt6==6.11.0
+peewee==4.0.6
+PyMySQL==1.2.0
+bcrypt==5.0.0
+openpyxl==3.1.5
+reportlab==4.5.1
+pyinstaller==6.20.0
