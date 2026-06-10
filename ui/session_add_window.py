@@ -65,6 +65,25 @@ class SessionAddWindow(QWidget):
         layout.addWidget(QLabel("Время (необязательно):"))
         self.time_edit = QTimeEdit()
         self.time_edit.setFixedHeight(52)
+        
+        self.time_edit.setStyleSheet("""
+            QTimeEdit {
+                border: 1.5px solid #cccccc;
+                border-radius: 20px;
+                padding: 10px 16px;
+                font-size: 20px;
+                background: #f9f9f9;
+            }
+            QTimeEdit:focus {
+                border: 1.5px solid #1a1a1a;
+                background: #ffffff;
+            }
+            QTimeEdit::drop-down {
+                border: none;
+                padding-right: 12px;
+            }
+        """)
+        
         if self.session and self.session.time:
             t = self.session.time
             self.time_edit.setTime(QTime(t.hour, t.minute))

@@ -62,6 +62,7 @@ class SessionCoachWindow(QWidget):
 
         title = QLabel("Детали занятия")
         title.setStyleSheet("font-size: 28px; font-weight: bold; border: none; background: transparent;")
+        title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(title)
         layout.addSpacing(8)
 
@@ -156,6 +157,25 @@ class SessionCoachWindow(QWidget):
         layout.addWidget(QLabel("Время (необязательно):"))
         self.edit_time = QTimeEdit()
         self.edit_time.setFixedHeight(52)
+        
+        self.edit_time.setStyleSheet("""
+            QTimeEdit {
+                border: 1.5px solid #cccccc;
+                border-radius: 20px;
+                padding: 10px 16px;
+                font-size: 20px;
+                background: #f9f9f9;
+            }
+            QTimeEdit:focus {
+                border: 1.5px solid #1a1a1a;
+                background: #ffffff;
+            }
+            QTimeEdit::drop-down {
+                border: none;
+                padding-right: 12px;
+            }
+        """)
+        
         t = self._get('time')
         if t: self.edit_time.setTime(t if hasattr(t, 'toPyTime') else t)
         layout.addWidget(self.edit_time)
