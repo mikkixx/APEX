@@ -1,20 +1,26 @@
 import sys
-import os
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QFontDatabase, QFont
 from ui.login_window import LoginWindow
-
-
-from utils import resource_path, reports_dir
-
+from utils import resource_path
+from db.connection import db
+from db.models import (
+    User, SpecialistBinding, TrainingPlan, Session,
+    TrainingDiary, MedicalExam, MedicalMetric,
+    Recommendation, Message, ReadinessStatus
+)
 
 def main():
     app = QApplication(sys.argv)
 
-    font_id = QFontDatabase.addApplicationFont(resource_path("fonts/Alegreya-Regular.ttf"))
+    font_path = resource_path("fonts/Alegreya-Regular.ttf")
+    font_id = QFontDatabase.addApplicationFont(font_path)
+    
     if font_id != -1:
         font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
         app.setFont(QFont(font_family, 11))
+    else:
+        print("Шрифт Alegreya не найден. Используется системный шрифт.")
 
     app.setStyleSheet("""
         QWidget {
@@ -119,10 +125,21 @@ def main():
         }
     """)
 
+    try:
+        db.connect()
+        db.create_tables([
+            User, SpecialistBinding, TrainingPlan, Session,
+            TrainingDiary, MedicalExam, MedicalMetric,
+            Recommendation, Message, ReadinessStatus
+        ], safe=True) 
+        print("Таблицы успешно созданы/проверены.")
+    except Exception as e:
+        print(f"Ошибка создания таблиц: {e}")
+        sys.exit(1)
+
     window = LoginWindow()
     window.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
