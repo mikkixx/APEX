@@ -26,6 +26,7 @@ class ReportsWindow(SpecialistBaseWindow):
 
     def _load(self):
         layout = self._content_layout
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         title = QLabel("ОТЧЕТЫ")
         title.setStyleSheet("font-size: 48px; font-weight: bold; letter-spacing: 1px;")
@@ -209,6 +210,7 @@ class ReportsWindow(SpecialistBaseWindow):
         outer_layout.addLayout(btn_wrap)
 
         layout.addWidget(outer)
+        layout.addStretch()
 
     def _load_athletes(self):
         from core.operations import get_my_athletes

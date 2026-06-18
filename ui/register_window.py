@@ -129,5 +129,5 @@ class RegisterWindow(QWidget):
     def _go_login(self):
         from ui.login_window import LoginWindow
         self.login_win = LoginWindow()
-        self.login_win.show()
+        self.login_win.showMaximized()
         self.close()

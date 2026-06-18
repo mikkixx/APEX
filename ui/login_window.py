@@ -110,11 +110,11 @@ class LoginWindow(QWidget):
             from ui.training_plan_window import TrainingPlanWindow
             self.main_win = TrainingPlanWindow(user_data)
 
-        self.main_win.show()
+        self.main_win.showMaximized()
         self.close()
 
     def _go_register(self):
         from ui.register_window import RegisterWindow
         self.reg_win = RegisterWindow()
-        self.reg_win.show()
+        self.reg_win.showMaximized()
         self.close()

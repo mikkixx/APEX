@@ -84,7 +84,7 @@ class BaseWindow(QMainWindow):
                 return
 
             self._next_window = w
-            w.show()
+            w.showMaximized()
             self.close()
 
         except Exception as e:
@@ -97,7 +97,7 @@ class BaseWindow(QMainWindow):
     def _logout(self):
         from ui.login_window import LoginWindow
         self._login = LoginWindow()
-        self._login.show()
+        self._login.showMaximized()
         self.close()
 
 class SpecialistBaseWindow(BaseWindow):
